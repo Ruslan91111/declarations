@@ -6,14 +6,13 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from .compare_xlsx_and_web import URL
 
 
 # Конфигурация логирования
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-fh = logging.FileHandler('dict_from_selenium.txt')
+fh = logging.FileHandler('dict_from_web_by_selenium.txt')
 fh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 logger.addHandler(fh)
@@ -32,7 +31,7 @@ chapters = {'common information': '//fgis-links-list/div/ul/li[1]/a',
 
 class DataScrapper:
     """Класс, собирающий данные со страницы."""
-    def __init__(self, url: str = URL):
+    def __init__(self, url: str):
         self.browser = webdriver.Chrome()
         self.url = url
         self.wait = WebDriverWait(self.browser, 60)
