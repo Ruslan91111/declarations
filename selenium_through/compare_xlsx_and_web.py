@@ -1,8 +1,9 @@
-from datetime import datetime
 import pandas as pd
 import logging
 
 from selenium_through.ammendments import amend_web_data
+from selenium_through.converters_to_xlsx_data import convert_date_format, remove_decimal_from_xlsx, amend_phone_number, \
+    amend_protocols, amend_date_protocols
 from selenium_through.data_scrapper import DataScrapper
 
 # Константы
@@ -18,29 +19,6 @@ fh = logging.FileHandler('result_of_comparison_xlsx_and_web.txt')
 fh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 logger.addHandler(fh)
-
-
-def convert_date_format(date_str: str) -> str:
-    """Привести строку с датой к определенному виду"""
-    # Строку из xlsx вида 2020-10-20 00:00:00 привести к виду 20.10.2020
-    try:
-        # Преобразование строки в объект datetime
-        date = datetime.strptime(str(date_str), '%Y-%m-%d %H:%M:%S')
-        # Преобразование объекта datetime в нужный формат
-        formatted_date = date.strftime('%d.%m.%Y')
-        return formatted_date
-    except ValueError:
-        return date_str
-
-
-def remove_decimal_from_xlsx(number: str):
-    """Убрать у числа точку и значения после точки."""
-    # В xlsx файле есть поля, где точка с цифрами
-    # передается при чтении xlsx файла pandas.
-    try:
-        return int(float(number))
-    except ValueError:
-        return number
 
 
 def read_columns_from_xlsx(xlsx_template: str) -> list:
@@ -59,15 +37,14 @@ def compare_datas(xlsx_data, web_data):
     for column in columns:
         try:
             # Берем значения по колонке из xlsx и web.
-            xlsx = xlsx_data[column].strip(' ')
-            web = web_data[column].strip(' ')
-
+            xlsx = str(xlsx_data[column]).replace('\n', '').strip(' ')
+            web = str(web_data[column]).replace('\n', '').strip(' ')
             # Если значения равны.
             if xlsx == web:
-                logger.info(f'====={i}=====\n'
-                            f'Значения равны по колонке*****{column}*****\n'
-                            f'в EXCEL файле -- {xlsx}\n'
-                            f'в WEB данных  -- {web}\n')
+                # logger.info(f'====={i}=====\n'
+                #             f'Значения равны по колонке*****{column}*****\n'
+                #             f'в EXCEL файле -- {xlsx}\n'
+                #             f'в WEB данных  -- {web}\n')
                 i += 1
                 continue
 
@@ -83,7 +60,7 @@ def compare_datas(xlsx_data, web_data):
             logger.info(f'====={i}=====\n'
                         f'В WEB ДАННЫХ ОТСУТСТВУЕТ ЗНАЧЕНИЕ ДЛЯ КОЛОНКИ'
                         f'*****{column}*****\n'
-                        f'а в XLSX {xlsx_data[column].strip(" ")}')
+                        f'а в XLSX {str(xlsx_data[column]).strip(" ")}')
 
 
 def open_xlsx_and_launch_comparison(path_to_excel):
@@ -95,14 +72,23 @@ def open_xlsx_and_launch_comparison(path_to_excel):
     # Читаем общий файл xlsx, попутно убираем из xlsx файла из колонки ОГРН точки с 0.
     df = pd.read_excel(path_to_excel, converters={
         'Основной государственный регистрационный '
-        'номер юридического лица (ОГРН)': remove_decimal_from_xlsx
+        'номер юридического лица (ОГРН)': remove_decimal_from_xlsx,
+        'Номер телефона': amend_phone_number,
+        'Номер протокола': amend_protocols,
+        'Дата протокола':  amend_date_protocols,
+        'Дата внесения в реестр сведений об аккредитованном лице': convert_date_format,
+        'Дата окончания действия декларации о соответствии': convert_date_format
     })
+
+    scrapper = DataScrapper(URL)
+    scrapper.open_page()
 
     # перебираем номера деклараций в колонке номеров деклараций
     for index, row in df.iterrows():
         declaration_number = row.iloc[1]
-        scrapper = DataScrapper(URL)
-        scrapper.open_declaration(declaration_number)
+
+        scrapper.input_declaration_number(declaration_number)
+        scrapper.get_needed_declaration_in_list(declaration_number)
         data_from_web = scrapper.get_data_on_declaration()
         # Вносим ряд уточнений в словарь для последующего сравнения
         web_data = amend_web_data(data_from_web)
@@ -111,17 +97,10 @@ def open_xlsx_and_launch_comparison(path_to_excel):
         xlsx_data = row
         columns = read_columns_from_xlsx(path_to_excel)[2:]
 
-        for column in columns:
-            # Привести дату в xlsx к определенному виду.
-            if str(type(xlsx_data[column])) == "<class 'datetime.datetime'>":
-                xlsx_data[column] = convert_date_format(xlsx_data[column])
-            # Привести все данные к строкам.
-            if str(type(xlsx_data[column])) != "<class 'str'>":
-                xlsx_data[column] = str(xlsx_data[column])
-
         # Запускаем сравнение, передаем строку из xlsx файла и путь к ПДФ файлу.
         logger.info(f"Сравнение данных по декларации {declaration_number}")
         compare_datas(xlsx_data, web_data)
+        scrapper.return_to_input_number()
 
 
 if __name__ == '__main__':

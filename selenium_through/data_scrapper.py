@@ -1,12 +1,13 @@
 """Containing class for scrapping data about declaration from website."""
 import logging
+import time
 
 from selenium import webdriver
+from selenium.common import ElementClickInterceptedException
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
 
 # Конфигурация логирования
 logger = logging.getLogger(__name__)
@@ -16,7 +17,6 @@ fh = logging.FileHandler('dict_from_web_by_selenium.txt')
 fh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 logger.addHandler(fh)
-
 
 # название подразделов декларации на web странице
 chapters = {'common information': '//fgis-links-list/div/ul/li[1]/a',
@@ -31,6 +31,7 @@ chapters = {'common information': '//fgis-links-list/div/ul/li[1]/a',
 
 class DataScrapper:
     """Класс, собирающий данные со страницы."""
+
     def __init__(self, url: str):
         self.browser = webdriver.Chrome()
         self.url = url
@@ -38,12 +39,21 @@ class DataScrapper:
         # Подразделы декларации.
         self.chapters = chapters
 
-    def open_declaration(self, number_declaration):
-        """Открыть страницу с полем для ввода деклараций,
-        ввести номер декларации, нажать на кнопку 'найти', дождаться
-        справа список деклараций, кликнуть по нужной декларации в списке."""
-        # Ввести номер декларации и нажать кнопку 'найти'
+    def open_page(self):
+        """Просто открыть страницу"""
         self.browser.get(self.url)
+
+    def return_to_input_number(self):
+        back_to_input = self.wait.until(
+            EC.presence_of_element_located((By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]"))
+        )
+        # '/html/body/fgis-root/div/fgis-rds-view-declaration/fgis-rds-view-declaration-toolbar/div/div[1]'
+        back_to_input.click()
+
+    def input_declaration_number(self, number_declaration):
+        """Открыть страницу с полем для ввода деклараций,
+        ввести номер декларации, нажать на кнопку 'найти'."""
+        # Ввести номер декларации и нажать кнопку 'найти'
         input_number_declaration = self.wait.until(
             EC.presence_of_element_located((By.XPATH, "//fgis-text/input"))
         )
@@ -54,13 +64,22 @@ class DataScrapper:
         )
         button_search_declaration.click()
 
-        # Дождаться и кликнуть на первую декларацию в списке справа.
-        needed_declaration = self.wait.until(
+    # Дождаться и кликнуть на первую декларацию в списке справа.
+    def get_needed_declaration_in_list(self, number_declaration):
+        """Обновить браузер, дождаться список деклараций, кликнуть по нужной декларации в списке."""
+        self.browser.refresh()
+        needed_declaration_element = self.wait.until(
             EC.element_to_be_clickable((
                 By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
                           "/a/fgis-h-table-limited-text-cell/div[1]"))
         )
-        needed_declaration.click()
+        needed_declaration_text = needed_declaration_element.text.strip()
+        if needed_declaration_text != number_declaration:
+            logger.info(f"Неправильный выбор декларации в списке справа."
+                        f"вместо {number_declaration},\n"
+                        f"выбран {needed_declaration_text}.")
+            pass
+        needed_declaration_element.click()
 
     def get_protocols(self) -> dict:
         """При нахождении на странице подраздела 'Исследования,
@@ -96,11 +115,15 @@ class DataScrapper:
         data = {}
         # Перебираем и кликаем по подразделам на странице.
         for chapter in self.chapters:
-            needed_chapter = self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, self.chapters[chapter]))
-            )
-            needed_chapter.click()
-
+            try:
+                needed_chapter = self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, self.chapters[chapter])))
+                needed_chapter.click()
+            except ElementClickInterceptedException:
+                needed_chapter = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.chapters[chapter]))
+                )
+                needed_chapter.click()
             # Находим все элементы с классом "info-row__header" - ключи для словаря
             # и "info-row__text" - значения для ключей.
             headers = self.browser.find_elements(By.CLASS_NAME, "info-row__header")
@@ -113,6 +136,7 @@ class DataScrapper:
                 # Если ключ уже есть в словаре, то добавляем к ключу строку - название подраздела.
                 if key in data:
                     data[key + ' ' + chapter] = value
+                    continue
                 data[key] = value
 
             # Если подраздел 'Исследования, испытания, измерения', то отдельно
@@ -120,8 +144,8 @@ class DataScrapper:
             # как они хранятся в xlsx файле
             if chapter == 'tests':
                 protocols = self.get_protocols()
-                data['Номер протокола'] = ", '".join(protocols['numbers'])
-                data['Дата протокола'] = ", '".join(protocols['dates'])
+                data['Номер протокола'] = ",".join(protocols['numbers'])
+                data['Дата протокола'] = ",".join(protocols['dates'])
 
         logger.info(data)
         return data
