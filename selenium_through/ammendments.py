@@ -1,3 +1,4 @@
+"""Корректировка словаря данных, полученных с веба, для сравнения"""
 def amend_web_data(web_data):
     """Внести коррективы в словарь данных из WEB перед сравнением."""
     try:
@@ -11,5 +12,3 @@ def amend_web_data(web_data):
     except KeyError:
         print('Нет поля.')
     return web_data
-
-

@@ -1,3 +1,8 @@
+"""
+Конвертеры
+
+Содержит функции, приводящие данные из xlsx файла к нужному формату.
+"""
 from datetime import datetime
 
 
@@ -27,9 +32,9 @@ def remove_decimal_from_xlsx(number: str):
 def amend_phone_number(number: str):
     """Привести разное написание номера мобильного телефона
     к написанию, которое используется в WEB."""
-    number = str(number).replace('\n', '').replace('+', '').replace(' ', '').replace('(', '').replace(')', '')
-
-    # либо number = re.sub(r'[+\s\(\)\n]', '', number)
+    number = (str(number).replace('\n', '').replace('+', '').replace('-', '').
+              replace(' ', '').replace('(', '').replace(')', ''))
+    # либо number = re.sub(r'[+\-\s\(\)\n]', '', number)
     first_part = '+7 '
     second_part = number[1:]
     return first_part + second_part
