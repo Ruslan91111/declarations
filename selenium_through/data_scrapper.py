@@ -41,6 +41,7 @@ class DataScrapper:
         # Подразделы декларации.
         self.chapters = '//fgis-links-list/div/ul/li'
 
+
     def open_page(self) -> None:
         """Открыть страницу"""
         self.browser.get(self.url)
@@ -116,7 +117,7 @@ class DataScrapper:
         protocols['dates'] = protocol_dates
         return protocols
 
-    def get_data_on_declaration(self):
+    def get_data_on_declaration(self, needed_columns):
         """Собрать со страницы данные по декларации в словарь"""
 
         # Словарь, куда поместим данные со страницы.
@@ -142,12 +143,18 @@ class DataScrapper:
             # Загоняем данные в словарь.
             for header, text in zip(headers, texts):
                 key = header.text.strip()
-                value = text.text.strip()
-                # Если ключ уже есть в словаре, то добавляем к ключу строку - название подраздела.
-                if key in data:
-                    data[key + ' ' + chapter] = value
-                    continue
-                data[key] = value
+
+                dict_of_duplicate = {'Полное наименование': True,
+                                     'Полное наименование юридического лица': True,
+                                     'Номер документа': True}
+
+                if key in needed_columns:
+                    value = text.text.strip()
+                    # Если ключ уже есть в словаре, то добавляем к ключу строку - название подраздела.
+                    if key in data or key in dict_of_duplicate:
+                        data[key + ' ' + chapter] = value
+                        continue
+                    data[key] = value
 
             # Если подраздел 'Исследования, испытания, измерения', то отдельно
             # собираем номера и даты протоколов. Преобразовываем их в строки,
@@ -159,7 +166,6 @@ class DataScrapper:
 
             if chapter == 'testingLabs':
                break
-        logger.info(data)
         return data
 
     def close_browser(self):
