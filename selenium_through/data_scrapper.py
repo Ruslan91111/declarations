@@ -19,14 +19,14 @@ logger.addHandler(file_handler)
 
 
 # Названия подразделов декларации на web странице.
-chapters = {'common information': '//fgis-links-list/div/ul/li[1]/a',
-            'declaration': '//fgis-links-list/div/ul/li[2]/a',
-            'applicant': '//fgis-links-list/div/ul/li[3]/a',
-            'manufacturer': '//fgis-links-list/div/ul/li[4]/a',
-            'custom info': '//fgis-links-list/div/ul/li[5]/a',
-            'products info': '//fgis-links-list/div/ul/li[6]/a',
-            'tests': '//fgis-links-list/div/ul/li[7]/a',
-            'declaration-schema-docs': '//fgis-links-list/div/ul/li[8]/a'}
+# chapters = {'common information': '//fgis-links-list/div/ul/li[1]/a',
+#             'declaration': '//fgis-links-list/div/ul/li[2]/a',
+#             'applicant': '//fgis-links-list/div/ul/li[3]/a',
+#             'manufacturer': '//fgis-links-list/div/ul/li[4]/a',
+#             'custom info': '//fgis-links-list/div/ul/li[5]/a',
+#             'products info': '//fgis-links-list/div/ul/li[6]/a',
+#             'tests': '//fgis-links-list/div/ul/li[7]/a',
+#             'declaration-schema-docs': '//fgis-links-list/div/ul/li[8]/a'}
 
 
 class DataScrapper:
@@ -39,7 +39,7 @@ class DataScrapper:
         self.url = url
         self.wait = WebDriverWait(self.browser, 30)
         # Подразделы декларации.
-        self.chapters = chapters
+        self.chapters = '//fgis-links-list/div/ul/li'
 
     def open_page(self) -> None:
         """Открыть страницу"""
@@ -118,17 +118,21 @@ class DataScrapper:
 
     def get_data_on_declaration(self):
         """Собрать со страницы данные по декларации в словарь"""
+
         # Словарь, куда поместим данные со страницы.
         data = {}
+
         # Перебираем и кликаем по подразделам на странице.
-        for chapter in self.chapters:
+        for i in range(1, 10):
             try:
                 needed_chapter = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, self.chapters[chapter])))
+                    EC.element_to_be_clickable((By.XPATH, self.chapters+f'[{i}]/a')))
                 needed_chapter.click()
+                chapter = needed_chapter.get_attribute('href')
+                chapter = chapter[chapter.rfind('/') + 1:]
+
             except Exception as e:
-                logger.error("Произошла ошибка: %s", str(e))
-                continue
+                logger.error("Подразделы закончились. Произошла ошибка: %s", str(e))
 
             # Находим все элементы с классом "info-row__header" - ключи для словаря
             # и "info-row__text" - значения для ключей.
@@ -148,11 +152,13 @@ class DataScrapper:
             # Если подраздел 'Исследования, испытания, измерения', то отдельно
             # собираем номера и даты протоколов. Преобразовываем их в строки,
             # как они хранятся в xlsx файле
-            if chapter == 'tests':
+            if chapter == 'testingLabs':
                 protocols = self.get_protocols()
-                data['Номер протокола'] = ",".join(protocols['numbers'])
-                data['Дата протокола'] = ",".join(protocols['dates'])
+                data['Номер протокола'] = ", ".join(protocols['numbers'])
+                data['Дата протокола'] = ", ".join(protocols['dates'])
 
+            if chapter == 'testingLabs':
+               break
         logger.info(data)
         return data
 

@@ -42,7 +42,7 @@ def amend_phone_number(number: str):
 
 def amend_protocols(protocols: str):
     """'Номер протокола'привести к виду как в WEB версии"""
-    protocols = str(protocols).replace(' ', '').replace('\n', ', ')
+    protocols = str(protocols).replace('\n', ', ')
     return protocols
 
 
