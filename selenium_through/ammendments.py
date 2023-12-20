@@ -30,7 +30,7 @@ def amend_web_data(web_data: dict) -> dict:
 
     if 'Номер документа product' in web_data:
         web_data['Наименование документа'] = web_data.pop(
-            'Наименование документа product')
+            'Номер документа product')
     elif 'Наименование документа product' in web_data:
         web_data['Наименование документа'] = web_data.pop(
             'Наименование документа product')
