@@ -1,5 +1,5 @@
 """
-DataScrapper - класс для сбора данных по декларации с веба.
+DataScrapper - класс для сбора данных по документу с веба.
 """
 import logging
 
@@ -9,6 +9,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
+
+from enum import Enum
 
 
 # Конфигурация логирования
@@ -21,42 +23,51 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 
+class TypeOfDoc(Enum):
+    DECLARATION = 1
+    CERTIFICATE = 2
+
+
 class DataScrapper:
-    """Класс, собирающий данные со страницы.
-    Работает с определенной страницей."""
+    """
+    Класс, собирающий данные со страницы. Работает с определенной страницей
+    как с декларацией, так и с сертификатом.
 
-    def __init__(self, url: str) -> None:
+    Методы:
 
-        self.service = Service(r'C:\Users\RIMinullin'
-                               r'\PycharmProjects\someProject'
+    open_page
+    input_document_number
+    return_to_input_number
+    get_needed_document_in_list
+    get_protocols
+    get_inner_elements
+    get_data_on_document_by_columns
+    get_all_data
+    close_browser
+
+    """
+    def __init__(self, url: str, type_of_doc: TypeOfDoc) -> None:
+        self.service = Service(r'C:\Users\RIMinullin\PycharmProjects\someProject'
                                r'\selenium_through\chromedriver.exe')
         self.service.start()
         self.options = webdriver.ChromeOptions()
         # self.options.add_argument("--headless")
-        # self.options.add_argument("--window-size=1920,1080")
+        self.options.add_argument("--window-size=1920,1080")
         self.ua = UserAgent()
         self.user_agent = self.ua.random
         self.options.add_argument(f'--user-agent={self.user_agent}')
-
         self.browser = webdriver.Chrome(service=self.service,
                                         options=self.options)  # options=self.options
         self.url = url
         self.wait = WebDriverWait(self.browser, 30)
-
+        # Тип документа
+        self.type_of_doc = type_of_doc
         # XPATH для подразделов декларации.
         self.chapters = '//fgis-links-list/div/ul/li'
 
     def open_page(self) -> None:
         """Открыть страницу"""
         self.browser.get(self.url)
-
-    def return_to_input_number(self) -> None:
-        """После сохранения данных по декларации нажать на возврат
-        для ввода следующего номера декларации."""
-        back_to_input = self.wait.until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]")))
-        back_to_input.click()
 
     def input_document_number(self, document_number: str):
         """Открыть страницу с полем для ввода номера документа,
@@ -70,12 +81,21 @@ class DataScrapper:
         button_search.click()
         logger.info(f"Введен номер документа {document_number}")
 
+    def return_to_input_number(self) -> None:
+        """После сохранения данных по декларации нажать на возврат
+        для ввода следующего номера декларации."""
+        back_to_input = self.wait.until(
+            EC.element_to_be_clickable(
+                (By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]")))
+        back_to_input.click()
+
     def get_needed_document_in_list(self, document_number: str) -> None:
         """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
 
         # Дождаться загрузки элементов в списке документов.
-        self.browser.refresh()
-        # page_ready = self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "html")))
+        if self.type_of_doc == TypeOfDoc.DECLARATION:
+            self.browser.refresh()
+        pass
         # Первый элемент в списке
         needed_document_element = self.wait.until(EC.element_to_be_clickable(
             (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
@@ -119,6 +139,17 @@ class DataScrapper:
         logger.info(f"Номера протоколов {protocol_numbers},"
                     f" даты протоколов {protocol_dates}")
         return protocols
+
+    def get_inner_elements(self, chapter) -> dict:
+        """Собрать внутренние элементы на веб-странице. Для которых
+        недостаточно метода get_data_on_document_by_columns"""
+        inner_elements = {}
+        self.wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'card-edit-row__content')))
+        keys = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__header')
+        values = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__content')
+        for key, value in zip(keys, values):
+            inner_elements[key.text + ' ' + chapter] = value.text
+        return inner_elements
 
     def get_data_on_document_by_columns(self, needed_columns) -> dict:
         """Собрать с WEB страницы данные в словарь по определенным в шаблоне
@@ -166,20 +197,24 @@ class DataScrapper:
                         continue
                     data[key] = value
 
-            # Если подраздел 'Исследования, испытания, измерения', то отдельно собираем номера
-            # и даты протоколов. Преобразовываем их в строки, как они хранятся в xlsx файле
+            # Подключение других методов при наличии внутренних элементов, отличных от остальных.
+            if self.type_of_doc == TypeOfDoc.CERTIFICATE and chapter in {'applicant',
+                                                                         'manufacturer'}:
+                inner_data = self.get_inner_elements(chapter)
+                data.update(inner_data)
 
-            if chapter == 'testingLabs':  # Пока для декларации. Для сертификата под другому
+            elif chapter == 'testingLabs':  # Пока для декларации. Для сертификата под другому
                 protocols = self.get_protocols()
                 data['Номер протокола'] = ", ".join(protocols['numbers'])
                 data['Дата протокола'] = ", ".join(protocols['dates'])
+
             pass
 
         logger.info("Сбор данных со страницы окончен.\n")
         return data
 
     def get_all_data(self):
-        """Сбор всех данных независимо от того есть в columns или нет/"""
+        """Сбор всех данных независимо от того есть в columns или нет"""
         data = {}
         # Определяем номер последней главы - количество итераций для сбора данных.
         elements = self.wait.until(
@@ -220,18 +255,21 @@ class DataScrapper:
                     continue
                 data[key] = value
 
-            # Если подраздел 'Исследования, испытания, измерения', то отдельно собираем номера
-            # и даты протоколов. Преобразовываем их в строки, как они хранятся в xlsx файле
+                # Подключение других методов при наличии внутренних элементов, отличных от остальных.
+                if self.type_of_doc == TypeOfDoc.CERTIFICATE and chapter in {'applicant',
+                                                                             'manufacturer'}:
+                    inner_data = self.get_inner_elements(chapter)
+                    data.update(inner_data)
 
-            if chapter == 'testingLabs':  # Пока для декларации. Для сертификата под другому
-                protocols = self.get_protocols()
-                data['Номер протокола'] = ", ".join(protocols['numbers'])
-                data['Дата протокола'] = ", ".join(protocols['dates'])
-            pass
+                elif chapter == 'testingLabs':  # Пока для декларации. Для сертификата под другому
+                    protocols = self.get_protocols()
+                    data['Номер протокола'] = ", ".join(protocols['numbers'])
+                    data['Дата протокола'] = ", ".join(protocols['dates'])
+
+                pass
 
         logger.info("Сбор данных со страницы окончен.\n")
         return data
-
 
     def close_browser(self):
         """Закрыть браузер."""
