@@ -21,10 +21,6 @@ from selenium_through.data_scrapper import DataScrapper
 
 
 # Константы
-URL = "https://pub.fsa.gov.ru/rds/declaration"
-DRIVER_PATH = r"C:\Users\RIMinullin\PycharmProjects\someProject\chromedriver.exe"
-XLSX_TEMPLATE = (r"..\Шаблон для внесения информации по декларациям о "
-                 r"соответствии второй.xlsx")
 PATH_TO_VIEWED_NUMBERS = 'viewed_numbers.txt'
 DIR_WITH_XLSX_COMPARISON = (r"C:\Users\RIMinullin\PycharmProjects"
                             r"\someProject\selenium_through\files_of_comparison")
@@ -42,18 +38,24 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler = logging.FileHandler('./logs/comparison_xlsx_and_web.txt')
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.ERROR)
+stream_handler.setFormatter(formatter)
+
 # Добавляем обработчики к объекту логгера
 logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
 
 
-def read_columns_from_xlsx(xlsx_template: str =XLSX_TEMPLATE) -> list:
+def read_columns_from_xlsx(xlsx_template: str) -> list:
     """Вернуть список наименований всех столбцов из шаблонного xlsx файла."""
     df = pd.read_excel(xlsx_template)
     columns_from_df = df.columns
     return columns_from_df
 
 
-def give_columns_for_scrapping(columns: list) -> set:
+def give_columns_for_scrapping_declaration(columns: list) -> set:
     """Предоставить названия столбцов для скраппинга."""
     columns = list(columns)
     columns.extend(['Адрес места нахождения', 'Полное наименование юридического лица',
@@ -89,21 +91,23 @@ def write_to_excel_result_of_comparison(lists: list, path_to_excel: str):
         # df.to_excel(writer, index=False)  Записать в 4 столбца
 
 
-def scrapping_web_data_one_document(document_number: str, url: str,
-                                    path_to_save: str):
+def scrapping_web_data_one_document(document_number: str,
+                                    url: str,
+                                    path_to_save: str,
+                                    xlsx_template: str):
     """Получить номер документа, собрать данные с ВЕБ-ресурса(по определенным колонки)
     и сохранить в xlsx файл."""
 
     scrapper = DataScrapper(url)
     scrapper.open_page()
     scrapper.input_document_number(document_number)
-    columns = give_columns_for_scrapping(read_columns_from_xlsx())
+    columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(xlsx_template))
     scrapper.get_needed_document_in_list(document_number)
     data_from_web = scrapper.get_data_on_document_by_columns(columns)
     # Словарь с данными с WEB
     web_data = amend_web_data(data_from_web)
     # Сформировать два списка для записи в xlsx файл.
-    columns = read_columns_from_xlsx()
+    columns = read_columns_from_xlsx(xlsx_template)
     values = []
 
     # Перебираем значения из данных словаря по столбцам и добавляем их в результат.
@@ -121,10 +125,10 @@ def scrapping_web_data_one_document(document_number: str, url: str,
     write_to_excel_result_of_comparison(lists, path_to_save)
 
 
-def compare_xlsx_and_web_datas(xlsx_data: pd.Series, web_data: dict) -> list:
+def compare_xlsx_and_web_datas(xlsx_template: str, xlsx_data: pd.Series, web_data: dict) -> list:
     """Сравнить данные из xlsx и web."""
     # Названия колонок из xlsx
-    columns = read_columns_from_xlsx(XLSX_TEMPLATE)[2:]
+    columns = read_columns_from_xlsx(xlsx_template)[2:]
     # Списки для сохранения данных для последующей записи в EXCEL
     xlsx_list, web_list, results_list = [], [], []
 
@@ -195,7 +199,7 @@ def open_xlsx_and_launch_comparison(url: str, path_to_excel_with_numbers: str,
             # Иначе открываем декларацию в вебе и собираем данные
             scrapper.input_document_number(document_number)
             scrapper.get_needed_document_in_list(document_number)
-            columns = give_columns_for_scrapping(read_columns_from_xlsx())
+            columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(path_to_excel_with_numbers))
             data_from_web = scrapper.get_data_on_document_by_columns(columns)
             # Вносим ряд уточнений в словарь для последующего сравнения
             web_data = amend_web_data(data_from_web)
@@ -204,7 +208,8 @@ def open_xlsx_and_launch_comparison(url: str, path_to_excel_with_numbers: str,
 
             # Запускаем сравнение, передаем строку из xlsx файла и данные из web.
             logger.info(f"Сравнение данных по декларации {document_number}")
-            results_of_comparison = compare_xlsx_and_web_datas(xlsx_data, web_data)
+            results_of_comparison = compare_xlsx_and_web_datas(path_to_excel_with_numbers,
+                                                               xlsx_data, web_data)
 
             # Записать результат в excel файл.
             dec_num = (document_number.replace('/', '_'))
@@ -224,8 +229,3 @@ def open_xlsx_and_launch_comparison(url: str, path_to_excel_with_numbers: str,
         logger.info(f"За сеанс проверены номера деклараций: {list_of_viewed_that_will_be_written}")
 
     scrapper.close_browser()
-
-
-if __name__ == '__main__':
-    open_xlsx_and_launch_comparison(URL, XLSX_TEMPLATE, DIR_WITH_XLSX_COMPARISON)
-    # scrapping_web_data_one_document('ЕАЭС N RU Д-RU.РА03.В.34862/23', URL, DIR_SAVE_WEB_ON_DECLARATION)

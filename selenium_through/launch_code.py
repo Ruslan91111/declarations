@@ -2,8 +2,20 @@
 import os
 
 from selenium_through.compare_xlsx_and_web import (open_xlsx_and_launch_comparison,
-                                                   XLSX_TEMPLATE, DIR_WITH_XLSX_COMPARISON, URL,
-                                                   scrapping_web_data_one_document, DIR_SAVE_WEB_ON_DECLARATION)
+                                                   DIR_WITH_XLSX_COMPARISON,
+                                                   scrapping_web_data_one_document,
+                                                   DIR_SAVE_WEB_ON_DECLARATION)
+
+# Константы
+URL_DECLARATION = "https://pub.fsa.gov.ru/rds/declaration"
+URL_CERTIFICATES = "https://pub.fsa.gov.ru/rss/certificate"
+
+DRIVER_PATH = r"C:\Users\RIMinullin\PycharmProjects\someProject\chromedriver.exe"
+
+XLSX_TEMPLATE_DECLARATIONS = (r"..\Шаблон для внесения информации по декларациям о "
+                              r"соответствии второй.xlsx")
+
+XLSX_TEMPLATE_CERTIFICATES = r".\Шаблон для внесения информаци по СС.xlsx"
 
 
 def input_xlsx_template(default_path_to_xlsx: str) -> str | None:
@@ -24,20 +36,6 @@ def input_xlsx_template(default_path_to_xlsx: str) -> str | None:
     return path_to_excel
 
 
-# def input_type_of_doc():
-#     type_of_doc = input('Введите 1, либо просто нажмите "Enter", если работа будет с декларациями, '
-#                         '2 если с сертификатами.\n--> ')
-#     if type_of_doc.strip() == '1' or not type_of_doc:
-#         type_of_doc = 1
-#         return type_of_doc
-#     elif type_of_doc.strip() == '2':
-#         type_of_doc = 2
-#         return type_of_doc
-#     else:
-#         print('Введено неверное значение.')
-#         return None
-
-
 def input_path_to_save_xlsx_files(default_path: str):
     """Ввести путь к папке, в которую будут сохраняться файлы с результатами сравнения."""
 
@@ -56,23 +54,28 @@ def input_path_to_save_xlsx_files(default_path: str):
         return path_to_dir_for_files
 
 
-def launch_compare_xlsx_and_web():
+def launch_compare_xlsx_and_web(xlsx_template: str, url: str):
     """Запуск кода сравнения данных."""
-    path_to_excel_with_numbers = input_xlsx_template(default_path_to_xlsx=XLSX_TEMPLATE)
+    path_to_excel_with_numbers = input_xlsx_template(default_path_to_xlsx=xlsx_template)
     if path_to_excel_with_numbers is None:
         return None
     dir_for_save = input_path_to_save_xlsx_files(DIR_WITH_XLSX_COMPARISON)
 
     # Запуск цикла сравнения данных их xlsx и web.
-    open_xlsx_and_launch_comparison(URL, path_to_excel_with_numbers, dir_for_save)
-    scrapping_web_data_one_document('ЕАЭС N RU Д-RU.РА03.В.34862/23', URL, DIR_SAVE_WEB_ON_DECLARATION)
+    open_xlsx_and_launch_comparison(url, path_to_excel_with_numbers, dir_for_save)
+    scrapping_web_data_one_document('ЕАЭС N RU Д-RU.РА03.В.34862/23', url, DIR_SAVE_WEB_ON_DECLARATION)
 
 
 if __name__ == '__main__':
-    launch_compare_xlsx_and_web()
+    # Запустить сравнение данных в xlsx шаблоне.
+    # С вводом путей
+    # launch_compare_xlsx_and_web(XLSX_TEMPLATE_DECLARATIONS, URL_DECLARATION)
 
-# import datetime
-#
-# start_time = datetime.datetime.now()
-# open_xlsx_and_launch_comparison(XLSX_TEMPLATE)
-# print('Время выполнения: ', datetime.datetime.now() - start_time)
+    # Без ввода
+    open_xlsx_and_launch_comparison(URL_DECLARATION, XLSX_TEMPLATE_DECLARATIONS, DIR_WITH_XLSX_COMPARISON)
+
+    # Собрать данные с веба по одной декларации.
+    # scrapping_web_data_one_document('ЕАЭС N RU Д-RU.РА03.В.34862/23', URL, DIR_SAVE_WEB_ON_DECLARATION)
+
+    # Запуск сравнение данных в xlsx шаблоне сертификаты
+    # open_xlsx_and_launch_comparison(URL_CERTIFICATES, XLSX_TEMPLATE_CERTIFICATES, DIR_WITH_XLSX_COMPARISON)

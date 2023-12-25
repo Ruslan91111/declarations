@@ -2,10 +2,13 @@
 DataScrapper - класс для сбора данных по декларации с веба.
 """
 import logging
+
+from fake_useragent import UserAgent
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.chrome.service import Service
 
 
 # Конфигурация логирования
@@ -23,12 +26,23 @@ class DataScrapper:
     Работает с определенной страницей."""
 
     def __init__(self, url: str) -> None:
+
+        self.service = Service(r'C:\Users\RIMinullin'
+                               r'\PycharmProjects\someProject'
+                               r'\selenium_through\chromedriver.exe')
+        self.service.start()
         self.options = webdriver.ChromeOptions()
         # self.options.add_argument("--headless")
         # self.options.add_argument("--window-size=1920,1080")
-        self.browser = webdriver.Chrome()  # options=self.options
+        self.ua = UserAgent()
+        self.user_agent = self.ua.random
+        self.options.add_argument(f'--user-agent={self.user_agent}')
+
+        self.browser = webdriver.Chrome(service=self.service,
+                                        options=self.options)  # options=self.options
         self.url = url
         self.wait = WebDriverWait(self.browser, 30)
+
         # XPATH для подразделов декларации.
         self.chapters = '//fgis-links-list/div/ul/li'
 
@@ -58,7 +72,10 @@ class DataScrapper:
 
     def get_needed_document_in_list(self, document_number: str) -> None:
         """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
+
+        # Дождаться загрузки элементов в списке документов.
         self.browser.refresh()
+        # page_ready = self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "html")))
         # Первый элемент в списке
         needed_document_element = self.wait.until(EC.element_to_be_clickable(
             (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
@@ -160,6 +177,61 @@ class DataScrapper:
 
         logger.info("Сбор данных со страницы окончен.\n")
         return data
+
+    def get_all_data(self):
+        """Сбор всех данных независимо от того есть в columns или нет/"""
+        data = {}
+        # Определяем номер последней главы - количество итераций для сбора данных.
+        elements = self.wait.until(
+            EC.presence_of_all_elements_located((By.XPATH, '//fgis-links-list/div/ul/li')))
+        number_of_last_chapter = len(elements)
+
+        # Перебираем и кликаем по подразделам на странице.
+        for i in range(1, number_of_last_chapter + 1):
+            try:
+                needed_chapter = self.wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, self.chapters + f'[{i}]/a')))
+                needed_chapter.click()
+                # Имя подзаголовка, берем из ссылки перед нажатием.
+                chapter = needed_chapter.get_attribute('href')
+                chapter = chapter[chapter.rfind('/') + 1:]
+                logger.info(f"Проверка раздела {chapter}.")
+
+            except Exception as e:
+                logger.error(f"Во время исследования раздела {chapter} произошла ошибка: %s", str(e))
+                break
+
+            # "info-row__header" - ключи для словаря; "info-row__text" - значения.
+            headers = self.browser.find_elements(By.CLASS_NAME, "info-row__header")
+            texts = self.browser.find_elements(By.CLASS_NAME, "info-row__text")
+
+            # Преобразуем данные в словарь.
+            for header, text in zip(headers, texts):
+                key = header.text.strip()
+                # Ключи, которые могут встречаться несколько раз.
+                duplicates = {'Полное наименование',
+                              'Полное наименование юридического лица',
+                              'Номер документа'}
+
+                # Берем только те ключи и значения, который соответствуют колонкам, переданным в метод.
+                value = text.text.strip()
+                if key in data or key in duplicates:
+                    data[key + ' ' + chapter] = value
+                    continue
+                data[key] = value
+
+            # Если подраздел 'Исследования, испытания, измерения', то отдельно собираем номера
+            # и даты протоколов. Преобразовываем их в строки, как они хранятся в xlsx файле
+
+            if chapter == 'testingLabs':  # Пока для декларации. Для сертификата под другому
+                protocols = self.get_protocols()
+                data['Номер протокола'] = ", ".join(protocols['numbers'])
+                data['Дата протокола'] = ", ".join(protocols['dates'])
+            pass
+
+        logger.info("Сбор данных со страницы окончен.\n")
+        return data
+
 
     def close_browser(self):
         """Закрыть браузер."""
