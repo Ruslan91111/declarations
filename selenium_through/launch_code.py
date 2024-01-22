@@ -1,4 +1,4 @@
-"""Main module - to launch the code."""
+"""Модуль для запуска кода."""
 import os
 
 from selenium_through.compare_xlsx_and_web import (

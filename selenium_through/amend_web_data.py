@@ -63,8 +63,8 @@ def amend_web_data_certificates(web_data: dict) -> dict:
         web_data['Отчество руководителя юридического лица'] = web_data.pop(
             'Отчество руководителя')
 
-    if 'Адрес места нахождения  applicant' in web_data:
-        web_data['Адрес места нахождения'] = web_data.pop(
+    if 'Адрес места нахождения applicant' in web_data:
+        web_data['Адрес места нахождения заявителя'] = web_data.pop(
             'Адрес места нахождения applicant')
 
     if 'Адрес места осуществления деятельности applicant' in web_data:
@@ -105,5 +105,13 @@ def amend_web_data_certificates(web_data: dict) -> dict:
     if 'Бланк сертификата' in web_data:
         web_data['Номер бланка'] = web_data.pop(
             'Бланк сертификата')
+
+    if 'Обозначение стандарта, нормативного документа' in web_data:
+        web_data['Наименование документа'] = web_data.pop(
+            'Обозначение стандарта, нормативного документа')
+
+    if 'Наименование испытательной лаборатории' in web_data:
+        web_data['Испытания продукции'] = 'Да'
+    web_data['Испытания продукции'] = 'Нет'
 
     return web_data

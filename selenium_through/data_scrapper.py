@@ -84,33 +84,33 @@ class DataScrapper:
     def return_to_input_number(self) -> None:
         """После сохранения данных по декларации нажать на возврат
         для ввода следующего номера декларации."""
-        back_to_input = self.wait.until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]")))
+        # Для декларации
+        if self.type_of_doc == TypeOfDoc.DECLARATION.value:
+            back_to_input = self.wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]")))
+
+        # Для сертификата
+        else:
+            back_to_input = self.wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//fgis-rss-view-certificate-toolbar/div/div[1]")))
+
         back_to_input.click()
 
     def get_needed_document_in_list(self, document_number: str) -> None:
         """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
-
-        # Дождаться загрузки элементов в списке документов.
-        if self.type_of_doc == TypeOfDoc.DECLARATION:
-            self.browser.refresh()
-        pass
-        # Первый элемент в списке
+        document_number = document_number.strip()
         needed_document_element = self.wait.until(EC.element_to_be_clickable(
             (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
                        "/a/fgis-h-table-limited-text-cell/div[1]")))
 
-        # Строка - номер документа, выбранного для клика
-        needed_document_text = needed_document_element.text.strip()
-        # Проверка, что выбрана нужная декларация.
-        if needed_document_text != document_number:
-            logger.info(f"Неправильный выбор декларации в списке справа."
-                        f"вместо {document_number},\n"
-                        f"выбран {needed_document_text}.")
-        else:
-            logger.info(f"Выбран документ {document_number}")
+        while needed_document_element.text.strip() != document_number:
+            needed_document_element = self.wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
+                           "/a/fgis-h-table-limited-text-cell/div[1]")))
 
+        logger.info(f"Выбран документ {document_number}")
         needed_document_element.click()
 
     def get_protocols(self) -> dict:
@@ -198,7 +198,7 @@ class DataScrapper:
                     data[key] = value
 
             # Подключение других методов при наличии внутренних элементов, отличных от остальных.
-            if self.type_of_doc == TypeOfDoc.CERTIFICATE and chapter in {'applicant',
+            if self.type_of_doc == TypeOfDoc.CERTIFICATE.value and chapter in {'applicant',
                                                                          'manufacturer'}:
                 inner_data = self.get_inner_elements(chapter)
                 data.update(inner_data)

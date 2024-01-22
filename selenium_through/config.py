@@ -3,7 +3,7 @@ DIR_WITH_XLSX_COMPARISON = (r"C:\Users\RIMinullin\PycharmProjects"
 
 CERTIFICATE_NUMBER = 'ЕАЭС RU С-RU.АБ80.В.00365/23'
 
-INDEXES_FOR_DF = ['Поле для сравнения', 'EXCEL данные',
+INDEXES_FOR_DF_COMPARISON = ['Поле для сравнения', 'EXCEL данные',
                   'WEB данные', 'Результат сравнения']
 
 PATH_TO_VIEWED_NUMBERS_DECLARATIONS = './viewed_numbers_declarations.txt'
@@ -25,7 +25,7 @@ XLSX_TEMPLATE_DECLARATIONS = r".\xlsx_files\templates\Шаблон для вне
 XLSX_TEMPLATE_CERTIFICATES = r".\xlsx_files\templates\Шаблон для внесения информации по СС.xlsx"
 
 XLSX_ONE_DECLARATION = (r"C:\Users\RIMinullin\PycharmProjects\someProject\selenium_through"
-                        r"\xlsx_files\web_data_by_one_declaration")
+                        r"\xlsx_files\web_data_by_one_document\declarations")
 
 XLSX_ONE_CERTIFICATE = (r"C:\Users\RIMinullin\PycharmProjects\someProject\selenium_through"
-                        r"\xlsx_files\web_data_by_one_declaration")
+                        r"\xlsx_files\web_data_by_one_document\certificates")

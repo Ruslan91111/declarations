@@ -12,7 +12,7 @@
 import logging
 import pandas as pd
 
-from selenium_through.amend_web_data import amend_web_data_declarations
+from selenium_through.amend_web_data import amend_web_data_declarations, amend_web_data_certificates
 from selenium_through.converters_to_xlsx_data import (
     convert_date_format, remove_decimal_from_xlsx, amend_phone_number,
     amend_protocols,amend_date_protocols)
@@ -20,7 +20,8 @@ from selenium_through.converters_to_xlsx_data import (
 from selenium_through.data_scrapper import DataScrapper, TypeOfDoc
 from selenium_through.supporting_functions import (
     read_columns_from_xlsx, give_columns_for_scrapping_declaration, write_viewed_numbers_to_file,
-    read_viewed_numbers_of_documents, write_to_excel_result_of_comparison)
+    read_viewed_numbers_of_documents, write_to_excel_result_of_comparison, write_to_excel_data_one_document,
+    give_columns_for_scrapping_certificate)
 
 
 # Создаем объект логгера.
@@ -51,11 +52,17 @@ def scrapping_web_data_one_document(
     scrapper = DataScrapper(url, type_of_doc)
     scrapper.open_page()
     scrapper.input_document_number(document_number)
-    columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(xlsx_template))
+    if type_of_doc == TypeOfDoc.DECLARATION.value:
+        columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(xlsx_template))
+    else:
+        columns = give_columns_for_scrapping_certificate(read_columns_from_xlsx(xlsx_template))
     scrapper.get_needed_document_in_list(document_number)
     data_from_web = scrapper.get_data_on_document_by_columns(columns)
     # Словарь с данными с WEB
-    web_data = amend_web_data_declarations(data_from_web)
+    if type_of_doc == TypeOfDoc.DECLARATION.value:
+        web_data = amend_web_data_declarations(data_from_web)
+    else:
+        web_data = amend_web_data_certificates(data_from_web)
     # Сформировать два списка для записи в xlsx файл.
     columns = read_columns_from_xlsx(xlsx_template)
     values = []
@@ -72,7 +79,7 @@ def scrapping_web_data_one_document(
     lists = [columns, values]
     path_to_save = path_to_save + '\\' + (document_number.
                                                          replace('/', '_')) + ".xlsx"
-    write_to_excel_result_of_comparison(lists, path_to_save)
+    write_to_excel_data_one_document(lists, path_to_save)
 
 
 def compare_xlsx_and_web_datas(xlsx_template: str,
@@ -124,7 +131,7 @@ def open_xlsx_and_launch_comparison(url: str,
     сохранять данные с web, и запускать их сравнение."""
 
     # Читаем общий файл xlsx, конвертируем содержимое.
-    if type_of_doc == TypeOfDoc.DECLARATION:
+    if type_of_doc == TypeOfDoc.DECLARATION.value:
         df = pd.read_excel(path_to_excel_with_numbers, converters={
             'Основной государственный регистрационный '
             'номер юридического лица (ОГРН)': remove_decimal_from_xlsx,
@@ -138,7 +145,15 @@ def open_xlsx_and_launch_comparison(url: str,
         dict_of_viewed_numbers = read_viewed_numbers_of_documents(path_to_viewed)
 
     else:
-        df = pd.read_excel(path_to_excel_with_numbers)
+        df = pd.read_excel(path_to_excel_with_numbers, converters={
+            'Номер телефона': amend_phone_number,
+            'Номер протокола': amend_protocols,
+            'Дата внесения в реестр сведений об аккредитованном лице': convert_date_format,
+            'Дата протокола': convert_date_format,
+            'Дата регистрации сертификата': convert_date_format,
+            'Дата окончания действия сертификата': convert_date_format,
+
+        })
         # Ранее просмотренные номера документов до текущего вызова функции.
         dict_of_viewed_numbers = read_viewed_numbers_of_documents(path_to_viewed)
 
@@ -160,10 +175,17 @@ def open_xlsx_and_launch_comparison(url: str,
                 # Иначе открываем декларацию в вебе и собираем данные
                 scrapper.input_document_number(document_number)
                 scrapper.get_needed_document_in_list(document_number)
-                columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(path_to_excel_with_numbers))
+
+                if type_of_doc == TypeOfDoc.DECLARATION.value:
+                    columns = give_columns_for_scrapping_declaration(read_columns_from_xlsx(
+                        path_to_excel_with_numbers))
+                else:
+                    columns = give_columns_for_scrapping_certificate(read_columns_from_xlsx(
+                        path_to_excel_with_numbers))
+
                 data_from_web = scrapper.get_data_on_document_by_columns(columns)
                 # Вносим ряд уточнений в словарь для последующего сравнения
-                web_data = amend_web_data_declarations(data_from_web)
+                web_data = amend_web_data_certificates(data_from_web)
                 # Данные по декларации из xlsx файла.
                 xlsx_data = row
 

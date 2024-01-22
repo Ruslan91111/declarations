@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 
-from selenium_through.config import INDEXES_FOR_DF
+from selenium_through.config import INDEXES_FOR_DF_COMPARISON
 
 
 def read_columns_from_xlsx(xlsx_template: str) -> list:
@@ -26,8 +26,8 @@ def give_columns_for_scrapping_declaration(columns: list) -> set:
 def give_columns_for_scrapping_certificate(columns: list) -> set:
     """Предоставить названия столбцов для скраппинга сертификатов."""
     columns = list(columns)
-    columns.extend(['Фамилия руководителя', 'Имя руководителя',
-                    'Отчество руководителя', 'Адрес места нахождения ',
+    columns.extend(['Полное наименование', 'Фамилия руководителя', 'Имя руководителя',
+                    'Отчество руководителя', 'Адрес места нахождения',
                     'Адрес места осуществления деятельности', 'Адрес производства продукции',
                     'Общее наименование продукции', 'Наименование испытательной лаборатории',
                     'Бланк сертификата'
@@ -59,9 +59,17 @@ def read_viewed_numbers_of_documents(text_file: str) -> dict:
 def write_to_excel_result_of_comparison(lists: list, path_to_excel: str):
     """Принять на вход несколько списков и записать их
     в excel файл в строки друг над другом с индексами слева."""
-    data = {index: values for index, values in zip(INDEXES_FOR_DF, lists)}
+    data = {index: values for index, values in zip(INDEXES_FOR_DF_COMPARISON, lists)}
     df = pd.DataFrame(data)
     df = df.transpose()  # Транспонирование DataFrame: строки становятся столбцами и наоборот.
     with pd.ExcelWriter(path_to_excel) as writer:
         df.to_excel(writer, index=True, header=False)
         # df.to_excel(writer, index=False)  Записать в 4 столбца
+
+
+def write_to_excel_data_one_document(lists: list, path_to_excel: str):
+    """Принять на вход несколько списков и записать их
+    в excel файл в строки друг над другом с индексами слева."""
+    df = pd.DataFrame(lists)
+    with pd.ExcelWriter(path_to_excel) as writer:
+        df.to_excel(writer, index=False, header=False)
