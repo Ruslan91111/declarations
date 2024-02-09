@@ -16,11 +16,11 @@ import pyautogui
 import pytesseract
 import pyperclip
 import psutil
-import pygetwindow as gw
 import openpyxl
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
-from selenium_through.supporting_functions import read_viewed_numbers_of_documents, write_viewed_numbers_to_file
+from selenium_through.supporting_functions import (read_viewed_numbers_of_documents,
+                                                   write_viewed_numbers_to_file)
 
 
 # КОНСТАНТЫ - скриншоты: открыть ГОЛД и прокликать по меню.
@@ -45,7 +45,7 @@ MANUFACTURER_FIELD = r'.\screenshots\manufacturer_field.png'
 # Папка со статусами документов.
 THE_DECLARATIONS_STATUS = {
     'Действующая декларация ': r'.\screenshots\the_declarations_status\valid_declaration_green.png',
-    'Действующая декларация': r'.\screenshots\the_declarations_status\valid_declaration_transparent.png',
+    'Действующая декларация': r'.\screenshots\the_declarations_status\valid_declaration_transp.png',
     'Действующее письмо': r'.\screenshots\the_declarations_status\valid_letter.png',
     'Действующий сертификат': r'.\screenshots\the_declarations_status\valid_certification.png',
     'Подходящий сертификат': r'.\screenshots\the_declarations_status\approaching_certification.png',
@@ -90,7 +90,7 @@ def wait_screenshot(image_path, timeout=5, confidence=.7):
             if image:
                 pyautogui.click(image)
                 return image
-        except:
+        except pyautogui.ImageNotFoundException:
             pass
     raise Exception(f'{image_path} скриншот не найден')
 
@@ -107,7 +107,7 @@ def handle_error(timeout=1):
                 ok = pyautogui.locateOnScreen(OK_DATA_NOT_FOUND, confidence=.7)
                 pyautogui.click(ok)
                 return True
-        except:
+        except pyautogui.ImageNotFoundException:
             pass
     return None
 
@@ -123,7 +123,7 @@ def waiting_disappear_screenshot(screenshot, timeout=10):
             # Если найден, то продолжаем его находить.
             if image:
                 pass
-        except:
+        except pyautogui.ImageNotFoundException:
             return None
 
 
@@ -281,17 +281,16 @@ def take_product_data_from_fields(product_code: str) -> dict:
     """Найти место для ввода кода товара. Ввести, кликнуть по документу.
     Сохранить номер Документа(декларации)
     и наименование изготовителя в словарь"""
-
     data = {}
-
     # Ввести код и кликнуть по карточке/декларации. Если деклараций не будет или будет
     # ошибка даты данных, то вернется соответсвующий словарь и функция закончится.
     result_of_input_number = input_number_and_pick_declaration(product_code)
-    if type(result_of_input_number) is dict:
+    if isinstance(result_of_input_number, dict):
         return result_of_input_number
 
+    # Поля, из которых нужно собрать данные.
     needed_fields = {'REG_NUMBER': REG_NUMBER_FIELD,
-                     'MANUFACTURER_FIELD': MANUFACTURER_FIELD}  # Поля, из которых нужно собрать данные.
+                     'MANUFACTURER_FIELD': MANUFACTURER_FIELD}
 
     for key, value in needed_fields.items():
         field = wait_screenshot(value)  # Ищем скриншот.
@@ -331,7 +330,7 @@ def check_or_create_temporary_xlsx(temp_df: str) -> str:
     return temp_file
 
 
-def add_declaration_number_and_manufacturer(file, sheet):
+def add_declaration_number_and_manufacturer(file: str, sheet: str):
     """Основная, связующая функция модуля.
     Добавить в листе мониторинга тип документа,
     номер декларации и изготовителя из ГОЛД."""
@@ -394,7 +393,7 @@ def add_declaration_number_and_manufacturer(file, sheet):
 
 def launch_gold_module(attempts_for_range):
     """Запустить код из модуля."""
-    for i in range(attempts_for_range):
+    for _ in range(attempts_for_range):
         try:
             all = time.time()
             add_declaration_number_and_manufacturer(RESULT_FILE, 'декабрь')
