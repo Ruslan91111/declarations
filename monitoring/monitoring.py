@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 import re
 import pandas as pd
@@ -35,6 +34,7 @@ PARTS_TO_BE_REMOVED = [
     ' ОФ ', 'ОФИС ',
     'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
     ' УЛ ', 'УЛИЦА ',
+    ' ПР-Д ', 'ПРОЕЗД ',
     'РОССИЯ'
 ]
 
@@ -52,68 +52,20 @@ options.add_argument(f'--user-agent={user_agent}')
 browser = webdriver.Chrome(service=service, options=options)
 wait = WebDriverWait(browser, 30)
 
-##################################################################################
-# Сообщения для пользователя.
-##################################################################################
-MESSAGE_FOR_USER_VERIFIABLE_FILE = (
-    'Введите полный путь до файла xlsx, нуждающегося в проверке, '
-    'в том числе название файла и расширение:\n>>>')
-
-MESSAGE_FOR_USER_RESULT_FILE = (
-    'Введите полный путь до файла xlsx, в котором будут сохранены '
-    'результаты мониторинга:\n>>>')
-
-MESSAGE_FOR_USER_INPUT_SHEET_NAME = (
-    'Введите месяц, под которым будут сохранены результаты на отдельном листе:\n>>>')
-
 
 ##################################################################################
-# Функции для взаимодействия с пользователем.
-##################################################################################
-def get_path_for_existing_file(message_for_user):
-    """Получить путь от пользователя к существующему файлу."""
-    path_from_user = input(message_for_user)
-    if not path_from_user:
-        print('Путь не передан')
-        return None
-    elif not os.path.isfile(path_from_user):
-        print('Указанный файл не существует.')
-        return None
-    return path_from_user
-
-
-def get_string_from_user(message):
-    """Получить строку от пользователя."""
-    string = input(message)
-    return string
-
-
-##################################################################################
-# Функции формирующие колонки в файле с результатами.
-##################################################################################
-def create_sheet_write_codes_and_names(file_for_checking, file_of_results, sheet_name):
-    """Читает изначальный файл для мониторинга, берет из него наименование и код товара,
-    создает в xlsx файле мониторинга лист с наименованием введенного месяца
-    и сохраняет в него эти две колонки"""
-    df = pd.read_excel(file_for_checking)
-    new_df = pd.DataFrame({'Код товара': df['Unnamed: 6'][2:],
-                           'Наименование товара': df['Unnamed: 7'][2:]})
-    with pd.ExcelWriter(file_of_results, mode='a') as writer:
-        new_df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-
-##################################################################################
-# Работа с адресами
+# Работа с адресами - проверяем адреса юридических лиц, взятые с сайта ФСА.
+# Дополнительно берем адреса по ОГРН с сайта ЕГРЮЛ и сравниваем между собой.
 ##################################################################################
 def _compare_addresses(data: dict) -> dict:
-    """Сравнить адреса с сайта ФСА и ЕГРЮЛ."""
-    to_be_removed = PARTS_TO_BE_REMOVED
+    """Сравнить строки - адреса: с сайта ФСА и ЕГРЮЛ."""
+    elements_to_be_removed = PARTS_TO_BE_REMOVED  # Элементы, которые нужно убрать из строк.
 
     def prepare_addresses(string: str) -> list:
         """Подготовить адреса перед сравнением - убрать сокращения, лишние знаки."""
         string = string.upper().replace('.', ' ').replace('(', '').replace(')', '').replace(',', ' ')
         # Убираем сокращения и обозначения.
-        for i in to_be_removed:
+        for i in elements_to_be_removed:
             string = string.replace(i, ' ')
         string = string.replace(' ', '')
         result = sorted(string)
@@ -130,8 +82,10 @@ def _compare_addresses(data: dict) -> dict:
             data['Соответствие адресов с ЕГРЮЛ'] = 'Соответствует'
         else:
             data['Соответствие адресов с ЕГРЮЛ'] = 'Не соответствует'
+
     except:
-        print('На сайте ФСА нет одного из адресов.')
+        pass
+
     return data
 
 
@@ -139,12 +93,12 @@ def get_addresses_from_egrul(data_web, browser, wait):
     """Проверить адреса с ЕГРЮЛ. Открыть сайт ЕГРЮЛ, ввести номер ОГРН
     заявителя, взять адрес, сравнить с адресом с сайта Росаккредитации.
     Аналогично для изготовителя."""
-    # В браузере открыть вкладку, перейти на сайт ЕГРЮЛ.
-    browser.switch_to.new_window('tab')
+
+    # Перейти на сайт ЕГРЮЛ.
     browser.get('https://egrul.nalog.ru/index.html')
 
+    #  Выполнить алгоритм два раза для заявителя и изготовителя.
     applicant_and_manufacturer = ('applicant', 'manufacturer')
-
     for i in applicant_and_manufacturer:
         needed_element = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="query"]')))
         needed_element.click()
@@ -154,9 +108,11 @@ def get_addresses_from_egrul(data_web, browser, wait):
             # Ввести ОГРН
             needed_element.send_keys(
                 data_web[f'Основной государственный регистрационный номер юридического лица (ОГРН) {i}'])
+
             # Нажать найти
             button_search = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="btnSearch"]')))
             button_search.click()
+
             # Сохраняем адрес с сайта ЕГРЮЛ
             element = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text')))
             text = element.text
@@ -173,46 +129,63 @@ def get_addresses_from_egrul(data_web, browser, wait):
 
     # Вызвать функцию сравнения
     data_web = _compare_addresses(data_web)
-
-    # Закрыть страницу ЕГРЮЛ
-    browser.close()
     return data_web
 
 
-def check_gost(data, browser, wait):
-    """Проверить ГОСТ."""
+##################################################################################
+# Работа с ГОСТ.
+##################################################################################
+def check_gost(data: dict, browser, wait):
+    """Проверить ГОСТ, взятый с сайта ФСА на сайте проверки ГОСТ"""
 
-    if 'Наименование документа' in data or "Обозначение стандарта, нормативного документа" in data:
+    # Проверяем взяты ли данные ФСА с тех полей, где могут содержаться номера ГОСТ.
+    if ('Наименование документа product' in data or
+            "Обозначение стандарта, нормативного документа product" in data):
 
-        # Открыть сайт проверки ГОСТ.
-        browser.switch_to.new_window('tab')
-        browser.get('https://etr-torgi.ru/calc/check_gost//index.html')
+        # Берем непосредственно текст, в котором может быть номер ГОСТ.
+        if ('Наименование документа product' in data and
+                "Обозначение стандарта, нормативного документа product" in data):
+            text = (data['Наименование документа product'] +
+                    data["Обозначение стандарта, нормативного документа product"])
+        elif 'Наименование документа product' in data:
+            text = data['Наименование документа product']
+        elif "Обозначение стандарта, нормативного документа product" in data:
+            text = data["Обозначение стандарта, нормативного документа product"]
 
-        # Ввести номер ГОСТ
-        needed_element = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, '//*[@id="poisk-form"]/input')))
-        needed_element.click()
-
-        text = data['Наименование документа'] + data["Обозначение стандарта, нормативного документа"]
+        # Ищем подстроку, совпадающую с паттерном ГОСТ.
         pattern = r"\b\d{5}-\d{2,4}\b"
-        result = re.findall(pattern, text)[1]
-        needed_element.send_keys('ГОСТ ' + result)
-        # Нажать найти
-        button_search = wait.until(EC.element_to_be_clickable(
-            (By.CLASS_NAME, '//*[@id="gost_filter"]')))
-        button_search.click()
-        # Адрес с сайта ЕГРЮЛ
-        element = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, '//*[@id="data-box"]/div/div/div/p/b')))
-        text = element.text
-        data['Статус НД'] = text
-        browser.close()
-        return data
+        result = re.findall(pattern, text)
+
+        # Если в тексте ГОСТ есть.
+        if result:
+            gost_number = result[0]
+            # Открыть сайт проверки ГОСТ.
+            browser.get('https://etr-torgi.ru/calc/check_gost/')
+
+            # Ввести номер ГОСТ
+            needed_element = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, '//*[@id="poisk-form"]/input')))
+            needed_element.click()
+            needed_element.send_keys('ГОСТ ' + gost_number)
+
+            # Нажать найти
+            button_search = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, '//*[@id="gost_filter"]')))
+            button_search.click()
+
+            # Сохранить статус ГОСТа на сайте.
+            element = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, '//*[@id="data-box"]/div/div/div/p/b')))
+            text = element.text
+            data['Статус НД'] = text  # Сохранить значение с сайта ГОСТ
+            return data
+
     data['Статус НД'] = '-'
     return data
 
 
-def check_number_declaration(number):
+def check_number_declaration(number: str) -> str | None:
+    """Проверить номер декларации из xlsx файла на соответствие паттерну ФСА."""
     pattern1 = r'(ЕАЭС N RU Д-[\w\.]+)'
     pattern2 = r'(РОСС RU Д-[\w\.]+)'
     if re.match(pattern1, number) or re.match(pattern2, number):
@@ -221,15 +194,22 @@ def check_number_declaration(number):
         return None
 
 
-def launch_checking_fsa(file_after_gold, file_result, sheet):
+
+def launch_checking_fsa(file_after_gold: str, file_result: str, sheet: str):
     """Основная функция - работа с данными на сайте Росаккредитации,
     последующее их преобразование и работы с ними в DataFrame."""
 
     # Просмотренные номера деклараций. Берем из файла.
     set_of_viewed_numbers = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
+
     # Класс - собиратель данных с ФСА
-    scrapper = FasDataScrapper(browser, wait, URL_FSA_DECLARATION)
+    scrapper = FsaDataScrapper(browser, wait, URL_FSA_DECLARATION)
     scrapper.open_page()  # Открыть сайт ФСА
+    fsa_window = browser.current_window_handle  # Окно ФСА
+    browser.switch_to.new_window('tab')
+    second_window = browser.current_window_handle  # Второе окно для работы с ЕГРЮЛ и ГОСТ
+    browser.switch_to.window(fsa_window)
+
     gold_df = pd.read_excel(file_after_gold)  # Данные из xlsx после ГОЛД
 
     # Новый DataFrame, в котором будут итоговые данные.
@@ -265,12 +245,13 @@ def launch_checking_fsa(file_after_gold, file_result, sheet):
 
             # Собрать словарь данных по декларации, в том числе ЕГРЮЛ, ГОСТ.
             fsa_data = scrapper.get_data_on_declaration()  # Данные по декларации с сайта
-            fsa_page = scrapper.browser.current_window_handle
+            browser.switch_to.window(second_window)
             fsa_data = get_addresses_from_egrul(fsa_data, browser, wait)  # Работа с ЕГРЮЛ.
-            fsa_data = check_gost(fsa_data, browser, wait)
+            fsa_data = check_gost(fsa_data, browser, wait)  # Работа с ГОСТ.
+            browser.switch_to.window(fsa_window)
             fsa_data['ФИО'] = 'Код'
             fsa_data['Дата проверки'] = datetime.now().strftime('%d.%m.%Y-%H.%M.%S')
-            print(number_declaration)
+
             # Формируем Series с собранными данными.
             new_series = pd.Series([
                 fsa_data['Сокращенное наименование юридического лица applicant']
@@ -300,10 +281,10 @@ def launch_checking_fsa(file_after_gold, file_result, sheet):
             # Объединяем со старым Series в один и добавляем в новый DataFrame.
             new_row = row._append(new_series)
             new_df = new_df._append(new_row, ignore_index=True)
-            scrapper.browser.switch_to.window(fsa_page)
+            scrapper.browser.switch_to.window(fsa_window)
             scrapper.return_to_input_number()
             set_of_viewed_numbers.add(number_declaration)
-
+            browser.switch_to.window(fsa_window)
             count += 1
             print(fsa_data)
 
@@ -333,7 +314,7 @@ def launch_checking_fsa(file_after_gold, file_result, sheet):
         write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, set_of_viewed_numbers)
 
 
-class FasDataScrapper:
+class FsaDataScrapper:
     """
     Класс, собирающий данные со страницы росаккредитации. Работает с определенной страницей
     как с декларацией, так и с сертификатом.
