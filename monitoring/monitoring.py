@@ -1,12 +1,10 @@
 import os
 from datetime import datetime
 import re
-import openpyxl
 import pandas as pd
 import pyautogui
 from fake_useragent import UserAgent
 from selenium import webdriver
-from selenium.webdriver import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -23,6 +21,7 @@ VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_fsa_numbers.txt'
 PARTS_TO_BE_REMOVED = [
     'БУЛЬВАР', 'Б-Р',
     ' ОБЛ ', 'ОБЛАСТЬ',
+    'РАЙОН', ' Р-Н ',
     ' П ', ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
     ' КАБ ', 'КАБИНЕТ',
     'ГОРОД ', ' Г ',
@@ -34,9 +33,10 @@ PARTS_TO_BE_REMOVED = [
     ' ЭТ ', 'ЭТАЖ ',
     ' КОМ ',
     ' ОФ ', 'ОФИС ',
-    'М Р-Н',
+    'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
     ' УЛ ', 'УЛИЦА ',
-    'РОССИЯ']
+    'РОССИЯ'
+]
 
 
 ##################################################################################
@@ -414,7 +414,7 @@ class FasDataScrapper:
             (By.XPATH, '//fgis-links-list/div/ul/li')))
         number_of_last_chapter = len(elements)  # Номер последней итерации.
 
-        # Перебираем и кликаем по подразделам на странице.
+        # Перебираем и кликаем по подразделам ФСА.
         for i in range(1, number_of_last_chapter + 1):
             try:
                 # Кликаем слева по подразделу.
@@ -449,6 +449,7 @@ class FasDataScrapper:
         else:
             data['Наличие ДОС'] = '-'
             data['Соответствие с сайтом'] = '-'
+
         return data
 
     def close_browser(self):

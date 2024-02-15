@@ -1,11 +1,13 @@
 """Модуль для работы с GOLD.
 
-Запускает ГОЛД, считывает номера кодов товаров и их наименования, вводит коды
+Запускает ГОЛД, считывает номера кодов товаров и их наименования из
+существующего xlsx файла, вводит коды
 товаров поочередно в ГОЛД, выбирает тип документа, кликает по нему,
-сохраняет из выбранной карточки документа изготовителя и номер декларации или
-иного документа. Добавляет тип документа, номер документа и изготовителя в DataFrame.
+сохраняет из выбранной карточки документа: наименование изготовителя
+и номер декларации или иного документа.
+Добавляет тип документа, номер документа и изготовителя в DataFrame.
 DataFrame до проверки всего документа сохраняет в файл './temp_df.xlsx'.
-Номера просмотренных кодов товаров сохраняются в файл 'viewed_products.txt',
+Номера просмотренных кодов товаров сохраняются в файл 'viewed_products_in_gold.txt',
 который также считывается перед проверкой.
 
 """
@@ -79,7 +81,7 @@ path_to_poppler = r'../poppler-23.11.0/Library/bin'
 
 # Функции работы со скриншотами.
 # ==================================================================
-def wait_screenshot(image_path, timeout=5, confidence=.7):
+def wait_screenshot(image_path: str, timeout: int = 5, confidence: float = 0.7) -> str | None:
     """ Ожидать появление скриншота в течение заданного времени. """
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -95,7 +97,7 @@ def wait_screenshot(image_path, timeout=5, confidence=.7):
     raise Exception(f'{image_path} скриншот не найден')
 
 
-def handle_error(timeout=1):
+def handle_error(timeout: int = 1) -> bool | None:
     """ Нажать 'ОК' на сообщение об ошибке - отсутствии данных. """
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -112,14 +114,14 @@ def handle_error(timeout=1):
     return None
 
 
-def waiting_disappear_screenshot(screenshot, timeout=10):
+def waiting_disappear_screenshot(screenshot: str, timeout: int = 10) -> None:
     """ Ждем пока скриншот исчезнет с экрана. """
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
             time.sleep(0.05)
             # Ищем скриншот.
-            image = pyautogui.locateOnScreen(screenshot, confidence=.7)
+            image = pyautogui.locateOnScreen(screenshot, confidence=0.7)
             # Если найден, то продолжаем его находить.
             if image:
                 pass
@@ -127,7 +129,7 @@ def waiting_disappear_screenshot(screenshot, timeout=10):
             return None
 
 
-def input_in_gold_by_screenshot(screenshot, string_for_input, x_offset):
+def input_in_gold_by_screenshot(screenshot: str, string_for_input: str, x_offset: int) -> None:
     """Ввести строку в поле голда. Поиск по скриншоту, смещение по оси x"""
     # Находим положение нужного скриншота(слова).
     input_number = wait_screenshot(screenshot)
@@ -142,7 +144,7 @@ def input_in_gold_by_screenshot(screenshot, string_for_input, x_offset):
 
 # Функции открытия GOLD.
 # ==================================================================
-def check_program(process):
+def check_program(process: str) -> str | None:
     """Проверяет запущен ли процесс в ОС"""
     for proc in psutil.process_iter():  # Перебираем текущие процессы.
         name = proc.name()
@@ -151,7 +153,7 @@ def check_program(process):
     return None
 
 
-def activate_current_firefox(proc):
+def activate_current_firefox(proc: str) -> bool | None:
     """ Раскрыть окно запущенного firefox. """
     if proc is not None:
         wait_screenshot(FIREFOX_ICON_PANEL, confidence=0.9)
@@ -159,7 +161,7 @@ def activate_current_firefox(proc):
     return None
 
 
-def activate_current_java(proc):
+def activate_current_java(proc: str) -> bool | None:
     """ Раскрыть окно запущенного java."""
     if proc is not None:
         try:
@@ -225,7 +227,7 @@ def navigate_menu_until_product_number_input():
     pyautogui.doubleClick(menu_33_4)
 
 
-def _pick_valid_declaration(image_paths, confidence=0.7):
+def _pick_valid_declaration(image_paths: str, confidence: int = 0.7):
     """ После ввода кода товара, дождаться появления списка деклараций,
     выбрать действующее из списка. Если действующая не найдена
     вернуть словарь data со значениями по умолчанию. """
@@ -356,7 +358,7 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
     count = 0  # Для количества обработанных кодов товаров за вызов функции.
     try:
         # Перебираем построчно данные из excel.
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             # Читаем номер товара с листа.
             product_number = row.loc['Код товара']
             # Проверяем не просматривали ли его ранее
@@ -380,7 +382,7 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                 count += 1
     except:
         screenshot = pyautogui.screenshot()
-        screenshot.save(r".\screenshots\errors\error_{}.png".format(product_number))
+        screenshot.save(r".\screenshots\gold_errors\error_{}.png".format(product_number))
         print('Произошла ошибка.\n', 'Количество обработанных в ГОЛД', count)
         raise Exception
 
@@ -391,15 +393,15 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
         write_viewed_numbers_to_file(VIEWED_GOLD_PRODUCTS, set_of_viewed_numbers)
 
 
-def launch_gold_module(attempts_for_range):
+def launch_gold_module(attempts_for_range: int) -> None:
     """Запустить код из модуля."""
     for _ in range(attempts_for_range):
         try:
             all = time.time()
-            add_declaration_number_and_manufacturer(RESULT_FILE, 'декабрь')
+            add_declaration_number_and_manufacturer(RESULT_FILE, 'декабрь2')
         except:
             print(time.time() - all)
 
 
 if __name__ == '__main__':
-    launch_gold_module(4)
+    launch_gold_module(1)
