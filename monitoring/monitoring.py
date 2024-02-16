@@ -9,9 +9,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 
+from selenium.common.exceptions import TimeoutException
+
+
 from selenium_through.supporting_functions import write_viewed_numbers_to_file, read_viewed_numbers_of_documents
 
+
 URL_FSA_DECLARATION = "https://pub.fsa.gov.ru/rds/declaration"
+URL_FSA_CERTIFICATE = "https://pub.fsa.gov.ru/rss/certificate"
+URL_EGRUL = "https://egrul.nalog.ru/"
+URL_GOST = "https://etr-torgi.ru/calc/check_gost/"
+
 PATH_TO_DRIVER = (r'C:\Users\RIMinullin\PycharmProjects'
                   r'\someProject\selenium_through\chromedriver.exe')
 
@@ -19,25 +27,40 @@ VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_fsa_numbers.txt'
 
 PARTS_TO_BE_REMOVED = [
     'БУЛЬВАР', 'Б-Р',
-    ' ОБЛ ', 'ОБЛАСТЬ',
-    'РАЙОН', ' Р-Н ',
-    ' П ', ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
-    ' КАБ ', 'КАБИНЕТ',
+    ' ВН ',
     'ГОРОД ', ' Г ',
     ' Д ', 'ДОМ ',
-    ' НАБ ', 'НАБЕРЕЖНАЯ ',
-    'ШОССЕ ', ' Ш ',
-    ' ВН ', ' ТЕР ',
-    ' СТР ', 'СТРОЕНИЕ ',
-    ' ЭТ ', 'ЭТАЖ ',
-    ' КОМ ',
-    ' ОФ ', 'ОФИС ',
+    ' КАБ ', 'КАБИНЕТ',
+    ' КОМ ', 'КОМНАТА ',
     'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
-    ' УЛ ', 'УЛИЦА ',
+    ' НАБ ', 'НАБЕРЕЖНАЯ ',
+    ' ОБЛ ', 'ОБЛАСТЬ',
+    ' ОФ ', 'ОФИС ',
+    ' П ', ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
+    'ПОСЕЛОК ГОРОДСКОГО ТИПА', 'ПОС ', 'ПГТ ',
     ' ПР-Д ', 'ПРОЕЗД ',
-    'РОССИЯ'
+    'РАЙОН', ' Р-Н ',
+    'РОССИЯ',
+    ' СТР ', 'СТРОЕНИЕ ',
+    ' ТЕР ',
+    ' УЛ ', 'УЛИЦА ',
+    'ШОССЕ ', ' Ш ',
+    ' ЭТ ', 'ЭТАЖ '
 ]
 
+X_PATHS = {
+    'chapter': '//fgis-links-list/div/ul/li',
+    'input_field': "//fgis-text/input",
+    'search_button': "//button[contains(text(), 'Найти')]",
+    'pick_document': "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
+                     "/a/fgis-h-table-limited-text-cell/div[1]",
+    'return_declaration': "//fgis-rds-view-declaration-toolbar/div/div[1]",
+    'return_certificate': "//fgis-rss-view-certificate-toolbar/div/div[1]",
+    'doc_status_on_fsa': '//fgis-toolbar-status/span',
+    'last_iter': '//fgis-links-list/div/ul/li',
+    'egrul_input': '//*[@id="query"]',
+    'search_button_egrul': '//*[@id="btnSearch"]',
+}
 
 ##################################################################################
 # Создание экземпляра браузера и настройка, а также экземпляра wait.
@@ -95,12 +118,12 @@ def get_addresses_from_egrul(data_web, browser, wait):
     Аналогично для изготовителя."""
 
     # Перейти на сайт ЕГРЮЛ.
-    browser.get('https://egrul.nalog.ru/index.html')
+    browser.get(URL_EGRUL)
 
-    #  Выполнить алгоритм два раза для заявителя и изготовителя.
+    #  Выполнить две итерации для заявителя и изготовителя.
     applicant_and_manufacturer = ('applicant', 'manufacturer')
     for i in applicant_and_manufacturer:
-        needed_element = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="query"]')))
+        needed_element = wait.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['egrul_input'])))
         needed_element.click()
 
         # Проверяем есть ли ОГРН у юр.лица, по которому можно проверить адрес на сайте ЕГРЮЛ.
@@ -110,7 +133,7 @@ def get_addresses_from_egrul(data_web, browser, wait):
                 data_web[f'Основной государственный регистрационный номер юридического лица (ОГРН) {i}'])
 
             # Нажать найти
-            button_search = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="btnSearch"]')))
+            button_search = wait.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['search_button_egrul'])))
             button_search.click()
 
             # Сохраняем адрес с сайта ЕГРЮЛ
@@ -184,31 +207,72 @@ def check_gost(data: dict, browser, wait):
     return data
 
 
-def check_number_declaration(number: str) -> str | None:
+##################################################################################
+# Небольшие вспомогательные функции.
+##################################################################################
+def check_number_declaration(number: str) -> tuple | None:
     """Проверить номер декларации из xlsx файла на соответствие паттерну ФСА."""
-    pattern1 = r'(ЕАЭС N RU Д-[\w\.]+)'
-    pattern2 = r'(РОСС RU Д-[\w\.]+)'
-    if re.match(pattern1, number) or re.match(pattern2, number):
-        return number
+    pattern_declaration1 = r'(ЕАЭС N RU Д-[\w\.]+)'
+    pattern_declaration2 = r'(РОСС RU Д-[\w\.]+)'
+    pattern_certificate = r'(ЕАЭС RU С-[\w\.]+)'
+
+    if re.match(pattern_declaration1, number) or re.match(pattern_declaration2, number):
+        return number, 'declaration'
+
+    if re.match(pattern_certificate, number):
+        return number, 'certificate'
+
     else:
-        return None
+        return None, None
 
 
+def make_series_for_result(fsa_data: dict) -> pd.Series:
+    """Создать Series для добавления в лист мониторинга."""
+    series = pd.Series([
+        fsa_data['Сокращенное наименование юридического лица applicant']
+        if 'Сокращенное наименование юридического лица applicant' in fsa_data else '-',
+        fsa_data['Дата проверки'],
+        fsa_data['Наличие ДОС'],
+        fsa_data['Соответствие с сайтом'],
+        fsa_data['Статус на сайте'],
+        fsa_data['Соответствие адресов с ЕГРЮЛ'],
+        fsa_data['Адрес места нахождения applicant']
 
+        if 'Адрес места нахождения applicant' in fsa_data else '-',
+        fsa_data['Адрес места нахождения applicant ЕГРЮЛ']
+        if 'Адрес места нахождения applicant ЕГРЮЛ' in fsa_data else '-',
+        fsa_data['Адрес места нахождения manufacturer']
+        if 'Адрес места нахождения manufacturer' in fsa_data else '-',
+        fsa_data['Адрес места нахождения manufacturer ЕГРЮЛ']
+        if 'Адрес места нахождения manufacturer ЕГРЮЛ' in fsa_data else '-',
+        fsa_data['Статус НД'],
+        fsa_data['ФИО']],
+
+        index=['Поставщик', 'Дата проверки', 'Наличие ДОС',
+               'Соответствие с сайтом', 'Статус на сайте',
+               'Соответствие адресов с ЕГРЮЛ', 'Адрес заявителя',
+               'Адрес заявителя ЕГРЮЛ', 'Адрес изготовителя',
+               'Адрес изготовителя ЕГРЮЛ', 'Статус НД', 'ФИО'])
+
+    return series
+
+
+##################################################################################
+# Главная функция для работы с сайтами через браузер.
+##################################################################################
 def launch_checking_fsa(file_after_gold: str, file_result: str, sheet: str):
     """Основная функция - работа с данными на сайте Росаккредитации,
     последующее их преобразование и работы с ними в DataFrame."""
 
     # Просмотренные номера деклараций. Берем из файла.
-    set_of_viewed_numbers = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
+    viewed_numbers = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
 
-    # Класс - собиратель данных с ФСА
-    scrapper = FsaDataScrapper(browser, wait, URL_FSA_DECLARATION)
-    scrapper.open_page()  # Открыть сайт ФСА
-    fsa_window = browser.current_window_handle  # Окно ФСА
-    browser.switch_to.new_window('tab')
-    second_window = browser.current_window_handle  # Второе окно для работы с ЕГРЮЛ и ГОСТ
-    browser.switch_to.window(fsa_window)
+    # Создаем экземпляр для работы с браузером и 4 вкладки в нем.
+    browser_handler = BrowserHandler(browser, wait)  # Класс - для работы с браузером.
+    declaration_fsa_window = browser_handler.make_new_tab(URL_FSA_DECLARATION)
+    certificate_fsa_window = browser_handler.make_new_tab(URL_FSA_CERTIFICATE)  # Сертификаты.
+    egrul_window = browser_handler.make_new_tab(URL_EGRUL)  # ЕГРЮЛ
+    gost_window = browser_handler.make_new_tab(URL_GOST)  # ГОСТ
 
     gold_df = pd.read_excel(file_after_gold)  # Данные из xlsx после ГОЛД
 
@@ -221,87 +285,77 @@ def launch_checking_fsa(file_after_gold: str, file_result: str, sheet: str):
         'Статус НД', 'ФИО', 'Примечание']
     )
 
-    count = 0  # Для подсчета количества операций.
+    count = 0  # Для подсчета количества операций за цикл.
 
     try:
-        # Перебираем декларации
+        # Перебираем документы.
         for _, row in gold_df.iterrows():
-            # Номер декларации из старого DataFrame
-            number_declaration = row['ДОС']
+            number_document = row['ДОС']  # Номер документа из старого DataFrame
 
-            # Пропустить итерацию если ранее декларацию просматривали.
-            if number_declaration in set_of_viewed_numbers:
+            # Пропустить итерацию если ранее документ просматривали.
+            if number_document in viewed_numbers:
                 continue
 
-            # Пропустить итерацию если номер декларации не соответствует паттерну номера с ФСА.
-            number_declaration = check_number_declaration(number_declaration)
-            if number_declaration is None:
+            # Прогоняем через паттерны, определяем тип документа.
+            number_document, type_of_doc = check_number_declaration(number_document)
+
+            # Пропустить итерацию если номер документа не соответствует паттерну номера.
+            if number_document is None:
                 continue
+
+            # Переключаемся на соответсвующее окно в соответствии от типа документа.
+            if type_of_doc == 'declaration':
+                browser_handler.switch_to_tab(declaration_fsa_window)
+            elif type_of_doc == 'certificate':
+                browser_handler.switch_to_tab(certificate_fsa_window)
 
             # На сайте вводим номер декларации.
-            scrapper.input_document_number(number_declaration)
+            browser_handler.input_document_number(number_document)
             # Выбираем нужный документ.
-            scrapper.pick_needed_document_in_list(number_declaration)
+            picked = browser_handler.pick_needed_document_in_list(number_document)
 
-            # Собрать словарь данных по декларации, в том числе ЕГРЮЛ, ГОСТ.
-            fsa_data = scrapper.get_data_on_declaration()  # Данные по декларации с сайта
-            browser.switch_to.window(second_window)
-            fsa_data = get_addresses_from_egrul(fsa_data, browser, wait)  # Работа с ЕГРЮЛ.
-            fsa_data = check_gost(fsa_data, browser, wait)  # Работа с ГОСТ.
-            browser.switch_to.window(fsa_window)
+            if picked is True:
+                # Собрать словарь данных, с ФСА, ЕГРЮЛ, ГОСТ.
+                fsa_data = browser_handler.get_data_on_document(type_of_doc)  # Данные ФСА.
+                browser.switch_to.window(egrul_window)
+                fsa_data = get_addresses_from_egrul(fsa_data, browser, wait)  # ЕГРЮЛ.
+                fsa_data = check_gost(fsa_data, browser, wait)  # ГОСТ.
+
+            else:
+                fsa_data = {}
+                fsa_data['Наличие ДОС'] = 'Не найдено на ФСА'
+                fsa_data['Соответствие с сайтом'] = 'Не найдено на ФСА'
+                fsa_data['Статус на сайте'] = 'Не найдено на ФСА'
+                fsa_data['Соответствие адресов с ЕГРЮЛ'] = '-'
+                fsa_data['Адрес места нахождения applicant'] = '-'
+                fsa_data['Статус НД'] = '-'
+
             fsa_data['ФИО'] = 'Код'
             fsa_data['Дата проверки'] = datetime.now().strftime('%d.%m.%Y-%H.%M.%S')
 
             # Формируем Series с собранными данными.
-            new_series = pd.Series([
-                fsa_data['Сокращенное наименование юридического лица applicant']
-                if 'Сокращенное наименование юридического лица applicant' in fsa_data else '-',
-                fsa_data['Дата проверки'],
-                fsa_data['Наличие ДОС'],
-                fsa_data['Соответствие с сайтом'],
-                fsa_data['Статус на сайте'],
-                fsa_data['Соответствие адресов с ЕГРЮЛ'],
-                fsa_data['Адрес места нахождения applicant']
-                if 'Адрес места нахождения applicant' in fsa_data else '-',
-                fsa_data['Адрес места нахождения applicant ЕГРЮЛ']
-                if 'Адрес места нахождения applicant ЕГРЮЛ' in fsa_data else '-',
-                fsa_data['Адрес места нахождения manufacturer']
-                if 'Адрес места нахождения manufacturer' in fsa_data else '-',
-                fsa_data['Адрес места нахождения manufacturer ЕГРЮЛ']
-                if 'Адрес места нахождения manufacturer ЕГРЮЛ' in fsa_data else '-',
-                fsa_data['Статус НД'],
-                fsa_data['ФИО']],
-
-                index=['Поставщик', 'Дата проверки', 'Наличие ДОС',
-                       'Соответствие с сайтом', 'Статус на сайте',
-                       'Соответствие адресов с ЕГРЮЛ', 'Адрес заявителя',
-                       'Адрес заявителя ЕГРЮЛ', 'Адрес изготовителя',
-                       'Адрес изготовителя ЕГРЮЛ', 'Статус НД', 'ФИО'])
+            new_series = make_series_for_result(fsa_data)
 
             # Объединяем со старым Series в один и добавляем в новый DataFrame.
             new_row = row._append(new_series)
             new_df = new_df._append(new_row, ignore_index=True)
-            scrapper.browser.switch_to.window(fsa_window)
-            scrapper.return_to_input_number()
-            set_of_viewed_numbers.add(number_declaration)
-            browser.switch_to.window(fsa_window)
+
+            viewed_numbers.add(number_document)
             count += 1
             print(fsa_data)
 
     except:
         screenshot = pyautogui.screenshot()
         screenshot.save(r".\screenshots\errors\fsa_errors\error_{}.png".format(
-            number_declaration.replace('/', '_')))
-
+            number_document.replace('/', '_')))
         print('Произошла ошибка.\n', 'Количество обработанных в ГОЛД', count)
         raise Exception
 
     finally:
         # Прочитать из xlsx уже проверенные данные, объединить с полученными,
-        # записать DataFrame проверенных данных в файл результат.
+        # записать DataFrame в файл результат.
         old_df = pd.read_excel(file_result, sheet_name=sheet)
         total_df = pd.concat([old_df, new_df])
-
         with pd.ExcelWriter(file_result, if_sheet_exists='overlay', engine="openpyxl", mode='a') as writer:
             total_df.to_excel(writer, sheet_name=sheet, index=False, columns=[
                 'Код товара', 'Наименование товара', 'ДОС', 'Поставщик',
@@ -311,70 +365,77 @@ def launch_checking_fsa(file_after_gold: str, file_result: str, sheet: str):
                 'Адрес изготовителя ЕГРЮЛ', 'Статус НД', 'ФИО'])
 
         # А просмотренные коды товаров в текстовый файл.
-        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, set_of_viewed_numbers)
+        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, viewed_numbers)
 
 
-class FsaDataScrapper:
-    """
-    Класс, собирающий данные со страницы росаккредитации. Работает с определенной страницей
-    как с декларацией, так и с сертификатом.
-
-    Методы:
-
-    open_page
-    input_document_number
-    return_to_input_number
-    get_needed_document_in_list
-    get_protocols
-    get_inner_elements
-    get_data_on_document_by_columns
-    get_all_data
-    close_browser
-    """
-
-    def __init__(self, browser, wait, url: str):
+class BrowserHandler:
+    """Класс взаимодействия с браузером."""
+    def __init__(self, browser, wait):
+        """Инициация объекта. Принимает browser, wait"""
         self.browser = browser
         self.wait = wait
-        self.url = url
-        self.chapter_xpath = '//fgis-links-list/div/ul/li'
+        self.chapter_xpath = X_PATHS['chapter']
 
-    def open_page(self) -> None:
+    def make_new_tab(self, url):
+        """Открыть новое окно в браузере с определенным
+        сайтом и вернуть указатель на него."""
+        self.browser.switch_to.new_window('tab')
+        self.open_page(url)
+        return browser.current_window_handle
+
+    def switch_to_tab(self, tab):
+        self.browser.switch_to.window(tab)
+
+    def open_page(self, url) -> None:
         """Открыть страницу"""
-        self.browser.get(self.url)
+        self.browser.get(url)
 
     def input_document_number(self, document_number: str):
         """Открыть страницу с полем для ввода номера документа,
         ввести номер декларации, нажать на кнопку 'найти'."""
         input_number_document = self.wait.until(EC.presence_of_element_located(
-            (By.XPATH, "//fgis-text/input")))
+            (By.XPATH, X_PATHS['input_field'])))
         input_number_document.clear()
         input_number_document.send_keys(document_number)
         button_search = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//button[contains(text(), 'Найти')]")))
+            (By.XPATH, X_PATHS['search_button'])))
         button_search.click()
 
-    def return_to_input_number(self) -> None:
-        """После сохранения данных по декларации нажать на возврат
-        для ввода следующего номера декларации."""
-        back_to_input = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//fgis-rds-view-declaration-toolbar/div/div[1]")))
-        back_to_input.click()
-
-    def pick_needed_document_in_list(self, document_number: str) -> None:
+    def pick_needed_document_in_list(self, document_number: str):
         """Обновить браузер, дождаться список документов,
         кликнуть по нужному документу в списке."""
-        document_number = document_number.strip()
-        needed_document_element = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]"
-                       "/td[3]/a/fgis-h-table-limited-text-cell/div[1]")))
-
-        while needed_document_element.text.strip() != document_number:
+        try:
+            document_number = document_number.strip()
             needed_document_element = self.wait.until(EC.element_to_be_clickable(
-                (By.XPATH, "//*/div[1]/div/div/div/table/tbody/tr[2]/td[3]"
-                           "/a/fgis-h-table-limited-text-cell/div[1]")))
-        needed_document_element.click()
+                (By.XPATH, X_PATHS['pick_document'])))  # Элемент для клика.
 
-    def get_data_on_declaration(self) -> dict:
+            while needed_document_element.text.strip() != document_number:
+                needed_document_element = self.wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, X_PATHS['pick_document'])))
+            needed_document_element.click()
+            return True
+        except:
+            return False
+
+
+    def return_to_input_document_number(self, xpath) -> None:
+        """После сохранения данных по декларации нажать на возврат
+        для ввода следующего номера декларации."""
+        back_to_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+        back_to_input.click()
+
+    def get_inner_elements(self, chapter) -> dict:
+        """Собрать внутренние элементы на веб-странице. Для которых
+        недостаточно метода get_data_on_document_by_columns"""
+        inner_elements = {}
+        self.wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'card-edit-row__content')))
+        keys = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__header')
+        values = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__content')
+        for key, value in zip(keys, values):
+            inner_elements[key.text + ' ' + chapter] = value.text
+        return inner_elements
+
+    def get_data_on_document(self, type_of_doc: str) -> dict:
         """Собрать с WEB страницы данные в словарь по определенным в шаблоне
          колонкам."""
         # Нужные ключи для сбора
@@ -388,14 +449,14 @@ class FsaDataScrapper:
 
         # Создаем словарь для результатов работы, записываем первое значение.
         data = {'Статус на сайте': self.wait.until(EC.presence_of_element_located(
-            (By.XPATH, '//fgis-toolbar-status/span'))).text}
+            (By.XPATH, X_PATHS['doc_status_on_fsa']))).text}
 
         # Определяем номер последней главы - количество итераций для сбора данных.
         elements = self.wait.until(EC.presence_of_all_elements_located(
-            (By.XPATH, '//fgis-links-list/div/ul/li')))
+            (By.XPATH, X_PATHS['last_iter'])))
         number_of_last_chapter = len(elements)  # Номер последней итерации.
 
-        # Перебираем и кликаем по подразделам ФСА.
+        # Перебираем и кликаем по подразделам на странице.
         for i in range(1, number_of_last_chapter + 1):
             try:
                 # Кликаем слева по подразделу.
@@ -423,6 +484,18 @@ class FsaDataScrapper:
                     data[key + ' ' + chapter] = value
                 continue
 
+            # Для сертификатов изъятие данных отличается. Собираются внутренние элементы.
+            if chapter in {'applicant', 'manufacturer'} and type_of_doc == 'certificate':
+                inner_data = self.get_inner_elements(chapter)
+                data.update(inner_data)
+
+        # Возвращение на страницу для ввода номера документа.
+
+        if type_of_doc == 'declaration':
+            self.return_to_input_document_number(X_PATHS['return_declaration'])
+        else:
+            self.return_to_input_document_number(X_PATHS['return_certificate'])
+
         if data:
             data['Наличие ДОС'] = 'Да'
             data['Соответствие с сайтом'] = 'Соответствует'
@@ -432,10 +505,6 @@ class FsaDataScrapper:
             data['Соответствие с сайтом'] = '-'
 
         return data
-
-    def close_browser(self):
-        """Закрыть браузер."""
-        self.browser.quit()
 
 
 # Ввод переменных от пользователя.
