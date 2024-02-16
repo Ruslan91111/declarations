@@ -62,6 +62,11 @@ X_PATHS = {
     'search_button_egrul': '//*[@id="btnSearch"]',
 }
 
+FSA_BLANK_DICT = {'Наличие ДОС': '-',
+                  'Соответствие с сайтом': '-',
+                  'Соответствие адресов с ЕГРЮЛ': '-',
+                  'Адрес места нахождения applicant': '-',
+                  'Статус НД': '-'}
 ##################################################################################
 # Создание экземпляра браузера и настройка, а также экземпляра wait.
 ##################################################################################
@@ -317,18 +322,16 @@ def launch_checking_fsa(file_after_gold: str, file_result: str, sheet: str):
             if picked is True:
                 # Собрать словарь данных, с ФСА, ЕГРЮЛ, ГОСТ.
                 fsa_data = browser_handler.get_data_on_document(type_of_doc)  # Данные ФСА.
-                browser.switch_to.window(egrul_window)
-                fsa_data = get_addresses_from_egrul(fsa_data, browser, wait)  # ЕГРЮЛ.
-                fsa_data = check_gost(fsa_data, browser, wait)  # ГОСТ.
-
+                print(fsa_data)
+                if fsa_data['Статус на сайте'] == 'ДЕЙСТВУЕТ':
+                    browser.switch_to.window(egrul_window)
+                    fsa_data = get_addresses_from_egrul(fsa_data, browser, wait)  # ЕГРЮЛ.
+                    fsa_data = check_gost(fsa_data, browser, wait)  # ГОСТ.
+                else:
+                    pass
             else:
-                fsa_data = {}
-                fsa_data['Наличие ДОС'] = 'Не найдено на ФСА'
-                fsa_data['Соответствие с сайтом'] = 'Не найдено на ФСА'
+                fsa_data = FSA_BLANK_DICT
                 fsa_data['Статус на сайте'] = 'Не найдено на ФСА'
-                fsa_data['Соответствие адресов с ЕГРЮЛ'] = '-'
-                fsa_data['Адрес места нахождения applicant'] = '-'
-                fsa_data['Статус НД'] = '-'
 
             fsa_data['ФИО'] = 'Код'
             fsa_data['Дата проверки'] = datetime.now().strftime('%d.%m.%Y-%H.%M.%S')
@@ -414,9 +417,9 @@ class BrowserHandler:
                     (By.XPATH, X_PATHS['pick_document'])))
             needed_document_element.click()
             return True
+
         except:
             return False
-
 
     def return_to_input_document_number(self, xpath) -> None:
         """После сохранения данных по декларации нажать на возврат
@@ -448,9 +451,19 @@ class BrowserHandler:
         }
 
         # Создаем словарь для результатов работы, записываем первое значение.
+        status = self.wait.until(EC.presence_of_element_located(
+            (By.XPATH, X_PATHS['doc_status_on_fsa']))).text
+        if status != 'ДЕЙСТВУЕТ':
+            data = {'Статус на сайте': status}
+            data.update(FSA_BLANK_DICT)
+            if type_of_doc == 'declaration':
+                self.return_to_input_document_number(X_PATHS['return_declaration'])
+            else:
+                self.return_to_input_document_number(X_PATHS['return_certificate'])
+            return data
+
         data = {'Статус на сайте': self.wait.until(EC.presence_of_element_located(
             (By.XPATH, X_PATHS['doc_status_on_fsa']))).text}
-
         # Определяем номер последней главы - количество итераций для сбора данных.
         elements = self.wait.until(EC.presence_of_all_elements_located(
             (By.XPATH, X_PATHS['last_iter'])))
