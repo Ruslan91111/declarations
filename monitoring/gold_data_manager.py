@@ -1,16 +1,19 @@
 """Модуль для работы с GOLD.
 
-Запускает ГОЛД, считывает номера кодов товаров и их наименования из
-существующего xlsx файла, вводит коды
-товаров поочередно в ГОЛД, выбирает тип документа, кликает по нему,
+Запускает ГОЛД, либо активируя работающий процесс, либо запуская сначала
+от иконки на рабочем столе. Проходит по всему меню ГОЛД до ввода кода товара,
+ставит галочку на 'скрыть просроченные'. Считывает номера кодов товаров и
+их наименования из существующего xlsx файла, вводит коды
+товаров поочередно в ГОЛД, кликает по каждому действующему документу,
 сохраняет из выбранной карточки документа: наименование изготовителя
 и номер декларации или иного документа.
 Добавляет тип документа, номер документа и изготовителя в DataFrame.
-DataFrame до проверки всего документа сохраняет в файл './temp_df.xlsx'.
+DataFrame сохраняет в файл './temp_df.xlsx'.
 Номера просмотренных кодов товаров сохраняются в файл 'viewed_products_in_gold.txt',
 который также считывается перед проверкой.
 
 """
+import logging
 import time
 
 import cv2
@@ -22,11 +25,16 @@ import pyperclip
 import psutil
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
+from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
 from selenium_through.supporting_functions import (read_viewed_numbers_of_documents,
-                                                   write_viewed_numbers_to_file, check_or_create_temporary_xlsx)
+                                                   write_viewed_numbers_to_file,
+                                                   check_or_create_temporary_xlsx)
 
 
-# КОНСТАНТЫ - скриншоты: открыть ГОЛД и прокликать по меню.
+##################################################################################
+# КОНСТАНТЫ - скриншоты
+##################################################################################
+# открыть ГОЛД и прокликать по меню.
 FIREFOX_ICON = r'.\screenshots\appicon.png'
 FIREFOX_ICON_PANEL = r'.\screenshots\firefox_icon_panel.png'
 MENU_ICON = r'.\screenshots\menu_icon.png'
@@ -47,8 +55,8 @@ REG_NUMBER_FIELD = r'.\screenshots\reg_numb.png'
 MANUFACTURER_FIELD = r'.\screenshots\manufacturer_field.png'
 
 # Скриншоты для выбора действующих деклараций.
-GREEN_DECLARATION = (r'.\screenshots\the_declarations_status\valid_declaration_green.png')
-GRAY_DECLARATION = (r'.\screenshots\the_declarations_status\valid_declaration_transp.png')
+GREEN_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_green.png'
+GRAY_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_transp.png'
 
 # Скриншот загрузки данных
 LOADING_PRODUCT = r'.\screenshots\loading_product.png'
@@ -56,14 +64,15 @@ LOADING_PRODUCT = r'.\screenshots\loading_product.png'
 DATA_NOT_FOUND = r'.\screenshots\data_not_found.png'
 OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
 
-# Иные КОНСТАНТЫ
-# Для сохранения DataFrame в .xlsx файл до окончания полной проверки.
-TEMP_DF = r'.\temp_df.xlsx'
-# Просмотренные номера деклараций
-VIEWED_GOLD_PRODUCTS = r'.\viewed_products_in_gold.txt'
 
-# Итоговый файл с результатами мониторинга
-RESULT_FILE = r'.\Мониторинг АМ (2023).xlsx'
+##################################################################################
+# Иные КОНСТАНТЫ
+##################################################################################
+# Файлы
+TEMP_DF = r'.\temp_df.xlsx'  # Для сохранения DataFrame в .xlsx файл.
+VIEWED_GOLD_PRODUCTS = r'.\viewed_products_in_gold.txt'  # Просмотренные номера деклараций
+RESULT_FILE = r'.\Мониторинг АМ (2023).xlsx'  # Итоговый файл с результатами мониторинга
+LOGGING_FILE = r'.\gold_data_log.log'
 
 # Процессы для поиска в Windows.
 FIREFOX_PROC = "firefox.exe"
@@ -74,10 +83,24 @@ PATH_TO_TESSERACT = r'C:\Users\RIMinullin\AppData\Local\Programs\Tesseract-OCR\t
 pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
 path_to_poppler = r'../poppler-23.11.0/Library/bin'
 
+STARS = '*' * 40
+##################################################################################
+# Логгирование.
+##################################################################################
+logging.basicConfig(level=logging.INFO,
+                    filename=LOGGING_FILE,
+                    filemode="a",
+                    encoding='utf-8',
+                    format="%(asctime)s %(levelname)s %(message)s",
+                    )
 
+
+##################################################################################
 # Функции работы со скриншотами.
-# ==================================================================
-def wait_and_click_screenshot(image_path: str, timeout: int = 5, confidence: float = 0.7) -> str | None:
+##################################################################################
+def wait_and_click_screenshot(image_path: str,
+                              timeout: int = 5,
+                              confidence: float = 0.7) -> str | None:
     """ Ожидать появление скриншота в течение заданного времени.
      При обнаружении кликнуть один раз."""
     start_time = time.time()
@@ -91,7 +114,7 @@ def wait_and_click_screenshot(image_path: str, timeout: int = 5, confidence: flo
                 return image
         except pyautogui.ImageNotFoundException:
             pass
-    raise Exception(f'{image_path} скриншот не найден')
+    raise ScreenshotNotFoundException(image_path)
 
 
 def handle_error(timeout: int = 1) -> bool | None:
@@ -140,7 +163,7 @@ def input_in_gold_by_screenshot(screenshot: str, string_for_input: str, x_offset
 
 
 ##################################################################################
-# Функции открытия GOLD.
+# Функции, связанные с открытием GOLD.
 ##################################################################################
 def check_program(process: str):
     """Проверяет запущен ли процесс в ОС"""
@@ -151,7 +174,7 @@ def check_program(process: str):
     return None
 
 
-def activate_current_firefox(proc: str) -> bool | None:
+def activate_current_firefox(proc) -> bool | None:
     """ Раскрыть окно запущенного firefox. """
     if proc is not None:
         wait_and_click_screenshot(FIREFOX_ICON_PANEL, confidence=0.8)
@@ -159,12 +182,12 @@ def activate_current_firefox(proc: str) -> bool | None:
     return None
 
 
-def activate_current_java(proc: str) -> bool | None:
+def activate_current_java(proc) -> bool | None:
     """ Раскрыть окно запущенного java."""
     if proc is not None:
         try:
             wait_and_click_screenshot(MENU_ICON, confidence=0.8)
-        except:
+        except ScreenshotNotFoundException:
             return None
         return True
     return None
@@ -210,7 +233,7 @@ def activate_or_launch_gold():
     if active_firefox and active_java:
         try:
             wait_and_click_screenshot(MENU_33_4)
-        except:
+        except ScreenshotNotFoundException:
             wait_and_click_screenshot(MENU_33)
             wait_and_click_screenshot(MENU_33_4)
 
@@ -220,7 +243,7 @@ def activate_or_launch_gold():
             # Если найдет значит код в карточке товара.
             wait_and_click_screenshot(DECLARATION_CARD)
             pyautogui.hotkey('Alt', 'b')
-        except:
+        except ScreenshotNotFoundException:
             pass
 
     # Весь путь с иконки на рабочем столе.
@@ -341,9 +364,13 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                 input_in_gold_by_screenshot(PRODUCT_INPUT, product_number, 120)
                 pyautogui.hotkey('Alt', 't')  # Поиск.
                 waiting_disappear_screenshot(LOADING_PRODUCT)  # Дождаться, загрузки страницы
-
-                # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
-                centres = search_all_declarations_on_page()
+                # Проверить на наличие сообщения на экране об отсутствии данных.
+                error_no_data = handle_error()
+                if error_no_data is None:  # Если сообщения не было, то ищем центры.
+                    # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
+                    centres = search_all_declarations_on_page()
+                else:
+                    centres = None
 
                 if centres:  # Если найдены центры деклараций.
                     item = 0  # Переменная для итерации по списку центров.
@@ -356,7 +383,7 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                         pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
                         item += 1
 
-                    print(f'Кликнули {item} раз')
+                    logging.info("По номеру %s - %d документов." % (product_number, item))
 
                 else:
                     new_ser = pd.Series(['не найдено', 'не найдено'], index=['ДОС', 'Изготовитель'])
@@ -369,28 +396,38 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                 set_of_viewed_numbers.add(product_number)
                 count += 1
 
-    except:
+    except ScreenshotNotFoundException as error:
         screenshot = pyautogui.screenshot()
         screenshot.save(r".\screenshots\error.png")
-        print('Произошла ошибка.\n', 'Количество обработанных в ГОЛД', count)
-        raise Exception
+        logging.error('Скриншот %s не найден', error.image_path)
+        raise StopIterationExceptionInGold
 
     finally:
         # Записать DataFrame во временный xlsx файл.
         new_df.to_excel(temp_df, index=False)
         # А просмотренные коды товаров в текстовой файл.
         write_viewed_numbers_to_file(VIEWED_GOLD_PRODUCTS, set_of_viewed_numbers)
+        return count
 
 
-def launch_gold_module(attempts_for_range: int) -> None:
+def launch_gold_module(attempts_for_range: int,
+                       file_input,
+                       sheet_in_input_file) -> None:
     """Запустить код из модуля."""
-    for _ in range(attempts_for_range):
-        # try:
-        all = time.time()
-        add_declaration_number_and_manufacturer(RESULT_FILE, 'декабрь2')
-        # except:
-        print(time.time() - all)
+    logging.info(STARS)
+    logging.info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
+    for i in range(attempts_for_range):
+        logging.info("Старт итерации № %d", i)
+        start_iter = time.time()
+        count = 0
+        try:
+            count = add_declaration_number_and_manufacturer(file_input,
+                                                            sheet_in_input_file)
+        finally:
+            logging.info("Итерация № %d окончена. Обработано - %d кодов товара. "
+                         "Время выполнения %f." % (i, count, time.time() - start_iter))
+    logging.info("Окончание работы программы по работе с ГОЛД - 'launch_gold_module'")
 
 
 if __name__ == '__main__':
-    launch_gold_module(1)
+    launch_gold_module(5, RESULT_FILE, 'декабрь2')
