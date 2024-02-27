@@ -26,9 +26,9 @@ import psutil
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
 from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
-from selenium_through.supporting_functions import (read_viewed_numbers_of_documents,
-                                                   write_viewed_numbers_to_file,
-                                                   check_or_create_temporary_xlsx)
+from monitoring.supporting_functions import (read_viewed_numbers_of_documents,
+                                             write_viewed_numbers_to_file,
+                                             check_or_create_temporary_xlsx)
 
 
 ##################################################################################

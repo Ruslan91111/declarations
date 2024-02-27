@@ -1,9 +1,9 @@
+import time
 from datetime import datetime
 import re
 from types import NoneType
 
 import pandas as pd
-import pyautogui
 from fake_useragent import UserAgent
 
 from selenium import webdriver
@@ -11,22 +11,28 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
-from selenium_through.supporting_functions import write_viewed_numbers_to_file, read_viewed_numbers_of_documents
+from monitoring.supporting_functions import write_viewed_numbers_to_file, read_viewed_numbers_of_documents, \
+    check_or_create_temporary_xlsx
 
+##################################################################################
+# Константы
+##################################################################################
 
+# URLs
 URL_FSA_DECLARATION = "https://pub.fsa.gov.ru/rds/declaration"
 URL_FSA_CERTIFICATE = "https://pub.fsa.gov.ru/rss/certificate"
 URL_EGRUL = "https://egrul.nalog.ru/"
 URL_GOST = "https://etr-torgi.ru/calc/check_gost/"
-
 date_today = datetime.now().strftime('%Y-%m-%d')
 URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
 
 PATH_TO_DRIVER = (r'C:\Users\RIMinullin\PycharmProjects'
                   r'\someProject\selenium_through\chromedriver.exe')
 
+# Файлы
 VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_fsa_numbers.txt'
-
+INPUT_FILE = r'gold_data.xlsx'
+RESULT_FILE = r'result_data_after_web.xlsx'
 
 # Подстроки, которые необходимо удалить из адресов перед их сравнением.
 PARTS_TO_BE_REMOVED = [
@@ -184,6 +190,7 @@ def get_addresses_from_egrul(data_web: dict, browser, wait) -> dict:
     for i in applicant_and_manufacturer:
 
         # Проверяем есть ли ОГРН у юр.лица, по которому можно проверить адрес на сайте ЕГРЮЛ.
+        # if data_web[f'ОГРН {i}'] != 'Нет ОГРН':
         if f'ОГРН {i}' in data_web.keys():
             # Ищем поле для ввода
             needed_element = wait.until(EC.element_to_be_clickable(
@@ -302,6 +309,15 @@ def get_data_from_nsi(document_number, browser=browser, wait=wait) -> None | dic
     check_mark = wait.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['nsi_check_mark'])))
     check_mark.click()
 
+    # Дождаться загрузки страницы - исчезновения элемента.
+    loaded = False
+    while not loaded:
+        try:
+            time.sleep(0.06)
+            browser.find_element(By.CLASS_NAME, 'p-datatable-loading-overlay')
+        except:
+            loaded = True
+
     # Проверяем есть ли данные. Если данных нет, то будет соответсвующее сообщение на странице.
     try:
         data_on_nsi = browser.find_element(By.XPATH, X_PATHS['nsi_no_data']).text
@@ -378,7 +394,7 @@ def make_series_for_result(fsa_data: dict) -> pd.Series:
 ##################################################################################
 # Главная функция для работы с сайтами через браузер.
 ##################################################################################
-def launch_checking_data(file_after_gold: str, file_result: str, sheet: str):
+def launch_checking_data(input_file: str, result_file: str):
     """Основная функция - работа с данными в вебе, на сайтах,
     последующее их преобразование и работы с ними в DataFrame."""
 
@@ -393,7 +409,7 @@ def launch_checking_data(file_after_gold: str, file_result: str, sheet: str):
     gost_window = browser_handler.make_new_tab(URL_GOST)  # ГОСТ
     nsi_window = browser_handler.make_new_tab(URL_NSI)  # СГР
 
-    gold_df = pd.read_excel(file_after_gold)  # Данные из xlsx после ГОЛД
+    gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
 
     # Новый DataFrame, в котором будут итоговые данные.
     new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])
@@ -474,11 +490,14 @@ def launch_checking_data(file_after_gold: str, file_result: str, sheet: str):
     finally:
         # Прочитать из xlsx уже проверенные данные, объединить с полученными,
         # записать DataFrame в файл результат.
-        old_df = pd.read_excel(file_result, sheet_name=sheet)
+        old_df = check_or_create_temporary_xlsx(result_file)
+
+        old_df = pd.read_excel(result_file)
+
         total_df = pd.concat([old_df, new_df])
-        with pd.ExcelWriter(file_result, if_sheet_exists='overlay',
-                            engine="openpyxl", mode='a') as writer:
-            total_df.to_excel(writer, sheet_name=sheet,
+        with pd.ExcelWriter(result_file,
+                            engine="openpyxl", mode='w') as writer:
+            total_df.to_excel(writer,
                               index=False, columns=COLUMNS_FOR_FINAL_DF)
         # А просмотренные коды товаров в текстовый файл.
         write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, viewed_numbers)
@@ -646,6 +665,6 @@ class BrowserHandler:
 # create_sheet_write_codes_and_names(path_to_checking_file, path_to_results_file, month)
 
 # data_of_checking(path_to_results_file, month)
-launch_checking_data(r'C:\Users\RIMinullin\PycharmProjects\someProject\monitoring\temp_df.xlsx',
-                    r'C:\Users\RIMinullin\PycharmProjects\someProject\monitoring\Мониторинг АМ (2023).xlsx',
-                    'декабрь')
+
+if __name__ == '__main__':
+    launch_checking_data(INPUT_FILE, RESULT_FILE)

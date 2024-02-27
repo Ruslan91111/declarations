@@ -1,6 +1,7 @@
 """Вспомогательные функции для работы с файлами."""
 import os
 
+import openpyxl
 import pandas as pd
 
 from selenium_through.config import INDEXES_FOR_DF_COMPARISON
@@ -37,23 +38,23 @@ def give_columns_for_scrapping_certificate(columns: list) -> set:
     return columns
 
 
-def write_viewed_numbers_to_file(text_file: str, viewed: list) -> None:
+def write_viewed_numbers_to_file(text_file: str, viewed: set) -> None:
     """Записать номера просмотренных документов в файл."""
-    with open(text_file, 'a') as file:
+    with open(text_file, 'w', encoding='utf-8') as file:
         for number in viewed:
             file.write(str(number) + '\n')
 
 
-def read_viewed_numbers_of_documents(text_file: str) -> dict:
+def read_viewed_numbers_of_documents(text_file: str) -> set:
     """Прочитать номера просмотренных документов из файла."""
     if not os.path.isfile(text_file):
-        with open(text_file, 'w') as file:
+        with open(text_file, 'w', encoding='utf-8') as file:
             file.write('')
 
-    with open(text_file, 'r') as file:
+    with open(text_file, 'r', encoding='utf-8') as file:
         list_of_viewed = file.read().split("\n")
-        my_dict = {number: 0 for number in list_of_viewed}
-        return my_dict
+        result = set(list_of_viewed)
+        return result
 
 
 def write_to_excel_result_of_comparison(lists: list, path_to_excel: str):
@@ -73,3 +74,14 @@ def write_to_excel_data_one_document(lists: list, path_to_excel: str):
     df = pd.DataFrame(lists)
     with pd.ExcelWriter(path_to_excel) as writer:
         df.to_excel(writer, index=False, header=False)
+
+
+def check_or_create_temporary_xlsx(temp_df: str) -> str:
+    """Проверить есть ли xlsx файл для временного хранения данных,
+    если да - открыть его, если нет_ создать."""
+    temp_file = temp_df
+    if os.path.isfile(temp_file):
+        return temp_file
+    workbook = openpyxl.Workbook()
+    workbook.save(temp_file)
+    return temp_file
