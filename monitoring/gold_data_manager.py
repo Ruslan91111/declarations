@@ -69,9 +69,9 @@ OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
 # Иные КОНСТАНТЫ
 ##################################################################################
 # Файлы
-TEMP_DF = r'.\temp_df.xlsx'  # Для сохранения DataFrame в .xlsx файл.
+GOLD_DATA_FILE = r'.\gold_data.xlsx'  # Для сохранения DataFrame в .xlsx файл.
 VIEWED_GOLD_PRODUCTS = r'.\viewed_products_in_gold.txt'  # Просмотренные номера деклараций
-RESULT_FILE = r'.\Мониторинг АМ (2023).xlsx'  # Итоговый файл с результатами мониторинга
+TWO_COLUMNS_FILE = r'.\Мониторинг АМ (2023).xlsx'  # Итоговый файл с результатами мониторинга
 LOGGING_FILE = r'.\gold_data_log.log'
 
 # Процессы для поиска в Windows.
@@ -87,12 +87,13 @@ STARS = '*' * 40
 ##################################################################################
 # Логгирование.
 ##################################################################################
-logging.basicConfig(level=logging.INFO,
-                    filename=LOGGING_FILE,
-                    filemode="a",
-                    encoding='utf-8',
-                    format="%(asctime)s %(levelname)s %(message)s",
-                    )
+logging.basicConfig(
+    level=logging.INFO,
+    filename=LOGGING_FILE,
+    filemode="a",
+    encoding='utf-8',
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
 
 ##################################################################################
@@ -337,7 +338,7 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
     df = pd.read_excel(file, sheet_name=sheet)
 
     # TEMP_DF - временный файл xlsx, в котором хранятся строки с ДОС и изготовителем.
-    temp_df = check_or_create_temporary_xlsx(TEMP_DF)
+    temp_df = check_or_create_temporary_xlsx(GOLD_DATA_FILE)
 
     if temp_df is None:  # Если файл пустой, создаем DataFrame.
         new_df = pd.DataFrame(columns=[
@@ -380,6 +381,10 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                         new_ser = pd.Series([data_from_gold['ДОС'],
                                              data_from_gold['Изготовитель']],
                                             index=data_from_gold.keys())
+                        # Новый Series на 4 колонки с ДОС и изготовителем добавляем в новый DataFrame.
+                        new_row = row._append(new_ser)
+                        new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+
                         pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
                         item += 1
 
@@ -387,10 +392,8 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
 
                 else:
                     new_ser = pd.Series(['не найдено', 'не найдено'], index=['ДОС', 'Изготовитель'])
-
-                # Новый Series на 4 колонки с ДОС и изготовителем добавляем в новый DataFrame.
-                new_row = row._append(new_ser)
-                new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+                    new_row = row._append(new_ser)  # Добавляем в DataFrame.
+                    new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
 
                 # Добавляем в просмотренные
                 set_of_viewed_numbers.add(product_number)
@@ -411,7 +414,7 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
 
 
 def launch_gold_module(attempts_for_range: int,
-                       file_input,
+                       input_file,
                        sheet_in_input_file) -> None:
     """Запустить код из модуля."""
     logging.info(STARS)
@@ -421,7 +424,7 @@ def launch_gold_module(attempts_for_range: int,
         start_iter = time.time()
         count = 0
         try:
-            count = add_declaration_number_and_manufacturer(file_input,
+            count = add_declaration_number_and_manufacturer(input_file,
                                                             sheet_in_input_file)
         finally:
             logging.info("Итерация № %d окончена. Обработано - %d кодов товара. "
@@ -430,4 +433,4 @@ def launch_gold_module(attempts_for_range: int,
 
 
 if __name__ == '__main__':
-    launch_gold_module(5, RESULT_FILE, 'декабрь2')
+    launch_gold_module(1, TWO_COLUMNS_FILE, 'gold')
