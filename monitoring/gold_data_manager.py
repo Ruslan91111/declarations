@@ -400,8 +400,6 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                 count += 1
 
     except ScreenshotNotFoundException as error:
-        screenshot = pyautogui.screenshot()
-        screenshot.save(r".\screenshots\error.png")
         logging.error('Скриншот %s не найден', error.image_path)
         raise StopIterationExceptionInGold
 

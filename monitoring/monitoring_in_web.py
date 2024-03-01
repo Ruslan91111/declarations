@@ -13,7 +13,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import (NoSuchElementException,
+                                        TimeoutException,
+                                        ElementClickInterceptedException)
+
+from monitoring.exceptions import SeleniumNotFoundException, EgrulCaptchaException
 from monitoring.supporting_functions import (write_viewed_numbers_to_file,
                                              read_viewed_numbers_of_documents,
                                              check_or_create_temporary_xlsx)
@@ -91,6 +95,7 @@ X_PATHS = {
     # ЕГРЮЛ
     'egrul_input': '//*[@id="query"]',
     'search_button_egrul': '//*[@id="btnSearch"]',
+    'egrul_captcha': '//*[@id="frmCaptcha"]',
 
     # ГОСТ
     'gost_input_field': '//*[@id="poisk-form"]/input',
@@ -124,6 +129,15 @@ TITLE_FOR_SERIES_TO_FINAL_DF = [
     'ФИО',
 ]
 
+# Нужные ключи для сбора с ФСА
+REQUIRED_KEYS_TO_FSA = {
+    'Статус декларации', 'Полное наименование юридического лица',
+    'Сокращенное наименование юридического лица',
+    'Основной государственный регистрационный номер юридического лица (ОГРН)',
+    'Адрес места нахождения', 'Наименование документа',
+    'Обозначение стандарта, нормативного документа'}
+
+
 COLUMNS_FOR_FINAL_DF = [
     'Код товара', 'Наименование товара', 'ДОС', 'Поставщик',
     'Изготовитель', 'Дата проверки', 'Наличие ДОС', 'Соответствие с сайтом',
@@ -143,18 +157,6 @@ logging.basicConfig(
     encoding='utf-8',
     format="%(asctime)s %(levelname)s %(message)s",
 )
-
-
-##################################################################################
-# Настройки браузера.
-##################################################################################
-service = Service(PATH_TO_DRIVER)
-service.start()
-options = webdriver.ChromeOptions()
-options.add_argument("--window-size=1920,1080")
-ua = UserAgent()
-user_agent = ua.random
-options.add_argument(f'--user-agent={user_agent}')
 
 
 ##################################################################################
@@ -207,16 +209,22 @@ def get_addresses_from_egrul(data_web: dict, browser_, wait_) -> dict:
 
         # Проверяем есть ли ОГРН у юр.лица.
         if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != 'Нет ОГРН':
-            needed_element = wait_.until(EC.element_to_be_clickable(
-                (By.XPATH, X_PATHS['egrul_input'])))
-            needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
-            button_search = wait_.until(EC.element_to_be_clickable(
-                (By.XPATH, X_PATHS['search_button_egrul'])))
-            button_search.click()  # Нажать найти
-            # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
-            text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
-            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
-            browser_.refresh()  # Обновить вкладку, для следующего ввода.
+            try:
+
+                needed_element = wait_.until(EC.element_to_be_clickable(
+                    (By.XPATH, X_PATHS['egrul_input'])))
+                needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
+                button_search = wait_.until(EC.element_to_be_clickable(
+                    (By.XPATH, X_PATHS['search_button_egrul'])))
+                button_search.click()  # Нажать найти
+                # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
+                text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
+                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
+                browser_.refresh()  # Обновить вкладку, для следующего ввода.
+
+            except TimeoutException:
+                raise EgrulCaptchaException
+
         else:  # Если ОГРН у юр.лица нет.
             data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
 
@@ -444,19 +452,17 @@ def make_series_for_result(data: dict) -> pd.Series:
 ##################################################################################
 # Главная функция для работы с сайтами через браузер.
 ##################################################################################
-def launch_checking_data(input_file: str, output_file: str):
+def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
     """Основная функция - работа с данными в вебе, на сайтах,
     последующее их преобразование и работы с ними в DataFrame."""
-
-    browser = webdriver.Chrome(service=service, options=options)
-    wait = WebDriverWait(browser, 15)
 
     # Просмотренные номера деклараций. Берем из файла.
     viewed_numbers = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
     gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
     new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])  # Новый DataFrame, для итоговых данных
+
     # Создаем в браузере 5 вкладок.
-    tabs = make_all_required_tabs(browser)  # Словарь вкладок
+    tabs = make_all_required_tabs(browser_)  # Словарь вкладок
 
     try:
         for _, row in gold_df.iterrows():  # Перебираем документы.
@@ -471,15 +477,15 @@ def launch_checking_data(input_file: str, output_file: str):
             if type_of_doc is None:  # Если номер документа не ФСА и не СГР
                 data['Статус на сайте'] = '-'
             elif type_of_doc == 'nsi':  # Если СГР
-                browser.switch_to.window(tabs['nsi'])
-                data = get_data_from_nsi(doc_number, browser, wait)
+                browser_.switch_to.window(tabs['nsi'])
+                data = get_data_from_nsi(doc_number, browser_, wait_)
             elif type_of_doc in {'declaration', 'certificate'}:  # Если ФСА
-                fsa_scrapper = FSAScrapper(browser, wait)
+                fsa_scrapper = FSAScrapper(browser_, wait_)
                 data = fsa_scrapper.get_data_from_fsa(doc_number, type_of_doc, tabs)
 
             # Если статус документа 'рабочий', то собрать данные с ЕГРЮЛ и ГОСТ.
             if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
-                data = add_egrul_and_gost(data, tabs, browser, wait)
+                data = add_egrul_and_gost(data, tabs, browser_, wait_)
 
             # Формируем Series с собранными данными и добавляем его в DataFrame.
             new_series = make_series_for_result(data)
@@ -487,17 +493,18 @@ def launch_checking_data(input_file: str, output_file: str):
             new_df = new_df._append(new_row, ignore_index=True)
             viewed_numbers.add(doc_number)
 
-    except TimeoutException:
-        print('Произошла ошибка.\n', 'Количество обработанных в ГОЛД')
+    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException) as e:
+        logging.error(e.msg)
+        raise SeleniumNotFoundException from e
 
     finally:  # Записать новый DataFrame и просмотренные номера.
-        browser.quit()
         output_file = check_or_create_temporary_xlsx(output_file)
         old_df_from_result = pd.read_excel(output_file)
         total_df = pd.concat([old_df_from_result, new_df])
         with pd.ExcelWriter(output_file, engine="openpyxl", mode='w') as writer:
             total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
         write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, viewed_numbers)
+        logging.info('Номер документа, на котором произошло исключение - %s' % doc_number)
 
 
 class FSAScrapper:
@@ -508,6 +515,7 @@ class FSAScrapper:
         self.browser = browser_
         self.wait = wait_
         self.chapter_xpath = X_PATHS['fsa_chapter']
+        self.required_keys = REQUIRED_KEYS_TO_FSA
 
     def input_document_number(self, document_number: str):
         """Открыть страницу с полем для ввода номера документа,
@@ -557,13 +565,6 @@ class FSAScrapper:
     def get_data_on_document(self, type_of_doc: str) -> dict:
         """Собрать с WEB страницы данные в словарь по определенным в шаблоне
          колонкам."""
-        # Нужные ключи для сбора
-        needed_columns = {
-            'Статус декларации', 'Полное наименование юридического лица',
-            'Сокращенное наименование юридического лица',
-            'Основной государственный регистрационный номер юридического лица (ОГРН)',
-            'Адрес места нахождения', 'Наименование документа',
-            'Обозначение стандарта, нормативного документа'}
 
         try:  # Пытаемся найти статус документа.
             status = self.wait.until(EC.presence_of_element_located(
@@ -590,35 +591,7 @@ class FSAScrapper:
 
         # Перебираем и кликаем по подразделам на странице.
         for item in range(1, number_of_last_chapter + 1):
-            # Кликаем слева по подразделу.
-            needed_chapter = self.wait.until(EC.element_to_be_clickable(
-                (By.XPATH, self.chapter_xpath + f'[{item}]/a')))
-            needed_chapter.click()
-            # Имя подзаголовка, берем из ссылки перед нажатием.
-            chapter = needed_chapter.get_attribute('href')
-            chapter = chapter[chapter.rfind('/') + 1:]
-            # Собираем данные со страницы.
-            headers = self.browser.find_elements(By.CLASS_NAME, "info-row__header")  # Ключи
-            texts = self.browser.find_elements(By.CLASS_NAME, "info-row__text")  # Значения
-
-            # Преобразуем данные в словарь.
-            for header, text in zip(headers, texts):
-                key = header.text.strip()
-                # Берем только те ключи и значения, который в списке необходимых колонок.
-                if key in needed_columns:
-                    value = text.text.strip()
-                    # Если ключ уже в словаре, то добавляем к ключу строку - название подраздела.
-                    if key == ('Основной государственный регистрационный '
-                               'номер юридического лица (ОГРН)'):
-                        data['ОГРН' + ' ' + chapter] = value
-                    else:
-                        data[key + ' ' + chapter] = value
-                continue
-
-            # Для сертификатов изъятие данных отличается. Собираются внутренние элементы.
-            if chapter in {'applicant', 'manufacturer'} and type_of_doc == 'certificate':
-                inner_data = self.get_inner_elements(chapter)
-                data.update(inner_data)
+            data = self.get_data_from_one_chapter(data, item, type_of_doc)
 
         # Возвращение на страницу для ввода номера документа.
         if type_of_doc == 'declaration':
@@ -630,6 +603,39 @@ class FSAScrapper:
             data['Наличие ДОС'] = 'Да'
             data['Соответствие с сайтом'] = 'Соответствует'
 
+        return data
+
+    def get_data_from_one_chapter(self, data, item, type_of_doc):
+        """Собрать данные с одного подраздела на сайте ФСА."""
+        # Кликаем слева по подразделу.
+        needed_chapter = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, self.chapter_xpath + f'[{item}]/a')))
+        needed_chapter.click()
+        # Имя подзаголовка, берем из ссылки перед нажатием.
+        chapter = needed_chapter.get_attribute('href')
+        chapter = chapter[chapter.rfind('/') + 1:]
+        # Собираем данные со страницы.
+        headers = self.browser.find_elements(By.CLASS_NAME, "info-row__header")  # Ключи
+        texts = self.browser.find_elements(By.CLASS_NAME, "info-row__text")  # Значения
+
+        # Преобразуем данные в словарь.
+        for header, text in zip(headers, texts):
+            key = header.text.strip()
+            # Берем только те ключи и значения, который в списке необходимых колонок.
+            if key in self.required_keys:
+                value = text.text.strip()
+                # Если ключ уже в словаре, то добавляем к ключу строку - название подраздела.
+                if key == ('Основной государственный регистрационный '
+                           'номер юридического лица (ОГРН)'):
+                    data['ОГРН' + ' ' + chapter] = value
+                else:
+                    data[key + ' ' + chapter] = value
+            continue
+
+        # Для сертификатов изъятие данных отличается. Собираются внутренние элементы.
+        if chapter in {'applicant', 'manufacturer'} and type_of_doc == 'certificate':
+            inner_data = self.get_inner_elements(chapter)
+            data.update(inner_data)
         return data
 
     def get_data_from_fsa(self, doc_number, type_of_doc, tabs):
@@ -648,9 +654,32 @@ class FSAScrapper:
             data = self.get_data_on_document(type_of_doc)  # Данные ФСА.
             return data
 
+        return {'Статус на сайте': "Статус не найден на ФСА"}
+
+
+def launch_checking(range_):
+    """Запуск кода из модуля в цикле. При каждой итерации,
+    создается браузер. По окончании итерации браузер закрывается."""
+
+    logging.info("Начало работы программы по работе с WEB мониторингом - 'monitoring_in_web'")
+    for i in range(range_):
+        try:
+            service = Service(PATH_TO_DRIVER)
+            service.start()
+            options = webdriver.ChromeOptions()
+            options.add_argument("--window-size=1920,1080")
+            ua = UserAgent()
+            user_agent = ua.random
+            options.add_argument(f'--user-agent={user_agent}')
+            browser = webdriver.Chrome(service=service, options=options)
+            wait = WebDriverWait(browser, 5)
+            logging.info("Старт итерации № %d", i)
+            checking_data_on_web(INPUT_FILE, RESULT_FILE, browser, wait)
+
+        except SeleniumNotFoundException as error:
+            logging.error(error.msg)
+            browser.quit()
+
 
 if __name__ == '__main__':
-    logging.info("Начало работы программы по работе с WEB мониторингом - 'monitoring_in_web'")
-    for i in range(4):
-        logging.info("Старт итерации № %d", i)
-        launch_checking_data(INPUT_FILE, RESULT_FILE)
+    launch_checking(10)
