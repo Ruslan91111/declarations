@@ -15,7 +15,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import (NoSuchElementException,
                                         TimeoutException,
-                                        ElementClickInterceptedException)
+                                        ElementClickInterceptedException,
+                                        StaleElementReferenceException)
 
 from monitoring.exceptions import SeleniumNotFoundException, EgrulCaptchaException
 from monitoring.supporting_functions import (write_viewed_numbers_to_file,
@@ -120,6 +121,8 @@ TITLE_FOR_SERIES_TO_FINAL_DF = [
     'Наличие ДОС',
     'Соответствие с сайтом',
     'Статус на сайте',
+    'ОГРН applicant',
+    'ОГРН manufacturer',
     'Соответствие адресов с ЕГРЮЛ',
     'Адрес места нахождения applicant',
     'Адрес места нахождения applicant ЕГРЮЛ',
@@ -139,11 +142,21 @@ REQUIRED_KEYS_TO_FSA = {
 
 
 COLUMNS_FOR_FINAL_DF = [
-    'Код товара', 'Наименование товара', 'ДОС', 'Поставщик',
-    'Изготовитель', 'Дата проверки', 'Наличие ДОС', 'Соответствие с сайтом',
-    'Статус на сайте', 'Соответствие адресов с ЕГРЮЛ',
-    'Адрес заявителя', 'Адрес заявителя ЕГРЮЛ', 'Адрес изготовителя',
-    'Адрес изготовителя ЕГРЮЛ', 'Статус НД', 'ФИО'
+    'Код товара', 'Наименование товара', 'ДОС',
+    'Поставщик',
+    'Дата проверки',
+    'Наличие ДОС',
+    'Соответствие с сайтом',
+    'Статус на сайте',
+    'ОГРН заявителя',
+    'ОГРН изготовителя',
+    'Соответствие адресов с ЕГРЮЛ',
+    'Адрес заявителя',
+    'Адрес заявителя ЕГРЮЛ',
+    'Адрес изготовителя',
+    'Адрес изготовителя ЕГРЮЛ',
+    'Статус НД',
+    'ФИО',
 ]
 
 
@@ -160,9 +173,70 @@ logging.basicConfig(
 
 
 ##################################################################################
+#  ЕГРЮЛ
 # Работа с адресами - проверяем адреса юридических лиц, взятые с сайта ФСА.
 # Дополнительно берем адреса по ОГРН с сайта ЕГРЮЛ и сравниваем между собой.
 ##################################################################################
+def add_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
+                          browser_, wait_) -> (dict, dict):
+    """Добавить в словарь адреса из ЕГРЮЛ. Предварительно проверить не проверяли ли
+    ОГРН ранее, если да, то взять адрес из словаря ранее проверенных, если не проверяли,
+    то открыть сайт ЕГРЮЛ и взять из него адрес. В конце функции сравнить адреса
+    и записать вывод о соответствии."""
+
+    for org in ('applicant', 'manufacturer'):
+        try:  # Проверяем не проверялся ли ОГРН ранее.
+            data[f'Адрес места нахождения {org} ЕГРЮЛ'] = dict_ogrn_address[data[f'ОГРН {org}']]
+            continue  # Если проверялся, то пропускаем итерацию.
+        except KeyError:
+            pass
+
+        # Если ранее ОГРН не проверялся. Пытаемся найти и сохранить адрес с сайта ЕГРЮЛ.
+        browser_.switch_to.window(tabs['egrul'])
+        data = get_address_from_egrul(data, org, browser_, wait_)
+
+        # Записываем в словарь результат сравнения.
+        try:
+            dict_ogrn_address[data[f'ОГРН {org}']] = data[f'Адрес места нахождения {org} ЕГРЮЛ']
+        except KeyError:
+            pass
+
+    # Записываем в словарь вывод о соответствии адресов.
+    if 'Нет ОГРН' in data.values():  # Если у поставщика или изготовителя не было ОГРН.
+        data['Соответствие адресов с ЕГРЮЛ'] = 'НЕТ ОГРН'
+    else:
+        data = _compare_addresses(data)  # ОГРН был - вызвать функцию сравнения адресов.
+
+    return data, dict_ogrn_address
+
+
+def get_address_from_egrul(data_web: dict, org: str, browser_, wait_) -> dict:
+    """Взять адрес с сайта ЕГРЮЛ по ОГРН. Если ОГРН нет, то так и записать."""
+
+    # Проверяем есть ли ОГРН у юр.лица.
+    if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != '-':  # Если есть ОГРН
+
+        try:
+            needed_element = wait_.until(EC.element_to_be_clickable(
+                (By.XPATH, X_PATHS['egrul_input'])))
+            needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
+            button_search = wait_.until(EC.element_to_be_clickable(
+                (By.XPATH, X_PATHS['search_button_egrul'])))
+            button_search.click()  # Нажать найти
+            # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
+            text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
+            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
+            browser_.refresh()  # Обновить вкладку, для следующего ввода.
+
+        except TimeoutException:
+            raise EgrulCaptchaException
+
+    else:  # Если ОГРН у юр.лица нет.
+        data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
+
+    return data_web
+
+
 def _compare_addresses(data: dict) -> dict:
     """Сравнить строки - адреса: с сайта и ЕГРЮЛ."""
     elements_to_be_removed = PARTS_TO_BE_REMOVED  # Элементы, которые нужно убрать из строк.
@@ -198,50 +272,19 @@ def _compare_addresses(data: dict) -> dict:
     return data
 
 
-def get_addresses_from_egrul(data_web: dict, browser_, wait_) -> dict:
-    """Проверить адреса с ЕГРЮЛ. Открыть сайт ЕГРЮЛ, ввести номер ОГРН
-    заявителя, взять адрес, сравнить с адресом с сайта Росаккредитации или СГР.
-    Аналогично для изготовителя."""
-
-    #  Выполнить две итерации для заявителя и изготовителя.
-    applicant_and_manufacturer = ('applicant', 'manufacturer')
-    for org in applicant_and_manufacturer:
-
-        # Проверяем есть ли ОГРН у юр.лица.
-        if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != 'Нет ОГРН':
-            try:
-
-                needed_element = wait_.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['egrul_input'])))
-                needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
-                button_search = wait_.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['search_button_egrul'])))
-                button_search.click()  # Нажать найти
-                # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
-                text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
-                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
-                browser_.refresh()  # Обновить вкладку, для следующего ввода.
-
-            except TimeoutException:
-                raise EgrulCaptchaException
-
-        else:  # Если ОГРН у юр.лица нет.
-            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
-
-    # Записываем в словарь результат сравнения.
-    if 'Нет ОГРН' in data_web.values():  # Если у поставщика или изготовителя не было ОГРН.
-        data_web['Соответствие адресов с ЕГРЮЛ'] = 'НЕТ ОГРН'
-    else:
-        data_web = _compare_addresses(data_web)  # Вызвать функцию сравнения адресов.
-
-    return data_web
-
-
 ##################################################################################
 # Работа с ГОСТ.
 ##################################################################################
+def add_gost_information(data: dict, tabs: dict, browser_, wait_):
+    """Добавить к словарю данные о статусе ГОСТ."""
+    browser_.switch_to.window(tabs['gost'])
+    data = check_gost(data, wait_)  # ГОСТ.
+    return data
+
+
 def check_gost(data: dict, wait_):
-    """Проверить ГОСТ, взятый с сайта(ФСА или nsi) на сайте проверки ГОСТ"""
+    """Проверить ГОСТ, взятый с сайта(ФСА или nsi) на сайте проверки ГОСТ.
+     Добавить в словарь вывод о статусе ГОСТ."""
 
     # Сокращения для ключей
     product = 'Наименование документа product'
@@ -278,6 +321,7 @@ def check_gost(data: dict, wait_):
                     (By.XPATH, X_PATHS['gost_status'])))
                 text = element.text
                 status_gost.add(text)
+
             data['Статус НД'] = " ".join(status_gost)  # Сохранить значения с сайта ГОСТ
 
         else:  # Если данных о ГОСТе нет.
@@ -308,15 +352,16 @@ def _get_dict_from_text_nsi(text: str, type_of_org: str) -> dict:
         data[f'Сокращенное наименование юридического лица {type_of_org}'] = (
             text[:text.find('[') + 1])
 
-    else:
+    else:  # Значит из информации только наименование.
         data[f'Сокращенное наименование юридического лица {type_of_org}'] = text
+        data[f'Адрес места нахождения {type_of_org}'] = '-'
 
     # Ищем ОГРН
     pattern_ogrn = r'\d{13}'  # Паттерн для поиска ОГРН.
     ogrn = re.search(pattern_ogrn, text)
 
     if isinstance(ogrn, NoneType):
-        data[f'ОГРН {type_of_org}'] = 'Нет ОГРН'
+        data[f'ОГРН {type_of_org}'] = '-'
     else:
         data[f'ОГРН {type_of_org}'] = ogrn.group()
 
@@ -404,6 +449,19 @@ def make_all_required_tabs(browser_) -> dict:
     return tabs
 
 
+def make_dict_ogrn_address(file: str) -> dict:
+    """Собрать и вернуть словарь из ключей: ОГРН и значений: адресов юридических лиц."""
+    try:
+        df = pd.read_excel(file)
+    except FileNotFoundError:
+        return {}
+    dict_ = {}
+    for _, row in df.iterrows():
+        dict_[row['ОГРН заявителя']] = row['Адрес заявителя']
+        dict_[row['ОГРН изготовителя']] = row['Адрес изготовителя']
+    return dict_
+
+
 def check_number_declaration(number: str) -> str | None:
     """Проверить номер декларации из xlsx файла и определить какой тип документа."""
     pattern_declaration1 = r'(ЕАЭС N RU Д-[\w\.]+)'
@@ -421,15 +479,6 @@ def check_number_declaration(number: str) -> str | None:
     return None
 
 
-def add_egrul_and_gost(data: dict, tabs: dict, browser_, wait_) -> dict:
-    """Добавить к словарю данные из ЕГРЮЛ и по ГОСТ."""
-    browser_.switch_to.window(tabs['egrul'])
-    data = get_addresses_from_egrul(data, browser_, wait_)
-    browser_.switch_to.window(tabs['gost'])
-    data = check_gost(data, wait_)  # ГОСТ.
-    return data
-
-
 def make_series_for_result(data: dict) -> pd.Series:
     """Создать Series для добавления в лист мониторинга."""
     data['ФИО'] = 'Код'
@@ -441,10 +490,7 @@ def make_series_for_result(data: dict) -> pd.Series:
         else:
             list_for_series.append('-')
 
-    series = pd.Series(list_for_series, index=[
-        'Поставщик', 'Дата проверки', 'Наличие ДОС','Соответствие с сайтом', 'Статус на сайте',
-        'Соответствие адресов с ЕГРЮЛ', 'Адрес заявителя', 'Адрес заявителя ЕГРЮЛ',
-        'Адрес изготовителя', 'Адрес изготовителя ЕГРЮЛ', 'Статус НД', 'ФИО'])
+    series = pd.Series(list_for_series, index=COLUMNS_FOR_FINAL_DF[3:])
 
     return series
 
@@ -460,6 +506,7 @@ def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
     viewed_numbers = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
     gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
     new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])  # Новый DataFrame, для итоговых данных
+    dict_ogrn_address = make_dict_ogrn_address(output_file)  # Словарь ОГРН и адресов.
 
     # Создаем в браузере 5 вкладок.
     tabs = make_all_required_tabs(browser_)  # Словарь вкладок
@@ -485,7 +532,9 @@ def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
 
             # Если статус документа 'рабочий', то собрать данные с ЕГРЮЛ и ГОСТ.
             if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
-                data = add_egrul_and_gost(data, tabs, browser_, wait_)
+                data, dict_ogrn_address = add_egrul_information(
+                    data, tabs, dict_ogrn_address, browser_, wait_)  # ЕГРЮЛ
+                data = add_gost_information(data, tabs, browser_, wait_)  # ГОСТ
 
             # Формируем Series с собранными данными и добавляем его в DataFrame.
             new_series = make_series_for_result(data)
@@ -493,7 +542,8 @@ def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
             new_df = new_df._append(new_row, ignore_index=True)
             viewed_numbers.add(doc_number)
 
-    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException) as e:
+    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
+            StaleElementReferenceException) as e:
         logging.error(e.msg)
         raise SeleniumNotFoundException from e
 
@@ -664,6 +714,7 @@ def launch_checking(range_):
     logging.info("Начало работы программы по работе с WEB мониторингом - 'monitoring_in_web'")
     for i in range(range_):
         try:
+            # Настройки браузера.
             service = Service(PATH_TO_DRIVER)
             service.start()
             options = webdriver.ChromeOptions()
@@ -671,6 +722,7 @@ def launch_checking(range_):
             ua = UserAgent()
             user_agent = ua.random
             options.add_argument(f'--user-agent={user_agent}')
+            # Экземпляр браузера и wait.
             browser = webdriver.Chrome(service=service, options=options)
             wait = WebDriverWait(browser, 5)
             logging.info("Старт итерации № %d", i)
@@ -678,8 +730,8 @@ def launch_checking(range_):
 
         except SeleniumNotFoundException as error:
             logging.error(error.msg)
-            browser.quit()
+            browser.quit()  # Закрыть браузер.
 
 
 if __name__ == '__main__':
-    launch_checking(10)
+    launch_checking(1)
