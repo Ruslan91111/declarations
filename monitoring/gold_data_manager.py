@@ -14,22 +14,21 @@ DataFrame сохраняет в файл './temp_df.xlsx'.
 
 """
 import logging
+import os
 import time
 
 import cv2
 import numpy as np
+import openpyxl
 import pandas as pd
 import pyautogui
 import pytesseract
 import pyperclip
 import psutil
+from datetime import datetime
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
 from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
-from monitoring.supporting_functions import (read_viewed_numbers_of_documents,
-                                             write_viewed_numbers_to_file,
-                                             check_or_create_temporary_xlsx)
-
 
 ##################################################################################
 # КОНСТАНТЫ - скриншоты
@@ -69,10 +68,12 @@ OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
 # Иные КОНСТАНТЫ
 ##################################################################################
 # Файлы
-GOLD_DATA_FILE = r'.\gold_data.xlsx'  # Для сохранения DataFrame в .xlsx файл.
 VIEWED_GOLD_PRODUCTS = r'.\viewed_products_in_gold.txt'  # Просмотренные номера деклараций
-TWO_COLUMNS_FILE = r'.\Мониторинг АМ (2023).xlsx'  # Итоговый файл с результатами мониторинга
-LOGGING_FILE = r'.\gold_data_log.log'
+TWO_COLUMNS_FILE = r'.\after1.xlsx'  # Итоговый файл с результатами мониторинга
+LOGGING_FILE = r'.\monitoring.log'
+MONTH = datetime.now().strftime('%B')  # Определяем месяц
+
+FILE_GOLD = r'./gold_data_{}.xlsx'.format(MONTH)
 
 # Процессы для поиска в Windows.
 FIREFOX_PROC = "firefox.exe"
@@ -84,6 +85,8 @@ pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
 path_to_poppler = r'../poppler-23.11.0/Library/bin'
 
 STARS = '*' * 40
+
+
 ##################################################################################
 # Логгирование.
 ##################################################################################
@@ -257,7 +260,7 @@ def activate_or_launch_gold():
 # Конкретные функции для работы с товарами и декларациями.
 ##################################################################################
 def search_all_declarations_on_page() -> list | None:
-    """После ввода кода товара в ГОЛД, ищем и возвращает координаты центров
+    """После ввода кода товара в ГОЛД, ищет и возвращает координаты центров
     всех декларации и свидетельств, которые есть по данному коду товара."""
     centers = set()  # Множество для центров деклараций.
 
@@ -304,7 +307,7 @@ def get_data_from_one_declaration() -> dict:
     needed_fields = (REG_NUMBER_FIELD, MANUFACTURER_FIELD)
 
     for field in needed_fields:
-        wait_and_click_screenshot(field)  # Ищем скриншот поля.
+        wait_and_click_screenshot(field)  # Ищем скриншот нужного поля.
         x, y = pyautogui.position()
         pyautogui.click(x + 120, y)  # Смещаемся в поле для ввода
         pyautogui.doubleClick()
@@ -326,25 +329,35 @@ def get_data_from_one_declaration() -> dict:
     return data
 
 
-def add_declaration_number_and_manufacturer(file: str, sheet: str):
+def add_declaration_number_and_manufacturer(input_file: str,
+                                            output_file: str):
     """Основная, связующая функция модуля.
     Добавить в листе мониторинга тип документа,
     номер декларации и изготовителя из ГОЛД."""
 
-    # Просмотренные коды товаров.
-    set_of_viewed_numbers = read_viewed_numbers_of_documents(VIEWED_GOLD_PRODUCTS)
-
-    # Читаем проверяемый файл с кодом товара и наименования товара.
-    df = pd.read_excel(file, sheet_name=sheet)
+    # Читаем проверяемый файл с порядковым номером, кодом товара и наименования товара.
+    old_df = pd.read_excel(input_file)
 
     # TEMP_DF - временный файл xlsx, в котором хранятся строки с ДОС и изготовителем.
-    temp_df = check_or_create_temporary_xlsx(GOLD_DATA_FILE)
+    gold_df = check_or_create_temporary_xlsx(output_file)
 
-    if temp_df is None:  # Если файл пустой, создаем DataFrame.
+    # Последний порядковый номер из просмотренных в ГОЛД кодов товаров.
+    try:
+        last_viewed_number = read_viewed_numbers_of_documents(VIEWED_GOLD_PRODUCTS)
+        if last_viewed_number is None:
+            last_viewed_number = 0
+    except:
+        last_viewed_number = 0
+
+    if gold_df is None:  # Если файл пустой, создаем DataFrame.
         new_df = pd.DataFrame(columns=[
-            'Код товара', 'Наименование товара', 'ДОС', 'Изготовитель'])
-    else:  # Если нет, то читаем существующий файл
-        new_df = pd.read_excel(temp_df)
+            'Порядковый номер АМ',
+            'Код товара',
+            'Наименование товара',
+            'ДОС',
+            'Изготовитель',])
+    else:  # Если нет, то читаем существующий
+        new_df = pd.read_excel(gold_df)
 
     # Запустить ГОЛД.
     activate_or_launch_gold()
@@ -352,15 +365,15 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
 
     try:
         # Перебираем построчно данные из excel.
-        for _, row in df.iterrows():
-            # Читаем номер товара из файла.
+        for _, row in old_df.iterrows():
+            # Читаем код товара из файла.
             product_number = row.loc['Код товара']
 
             # Проверяем не просматривали ли его ранее
-            if product_number in set_of_viewed_numbers:
-                pass
+            if row.loc['Порядковый номер АМ'] <= last_viewed_number:
+                continue
 
-            else:  # Если ранее декларацию не просматривали.
+            else:  # Если ранее код товара не просматривали.
                 # Ввести номер кода товара
                 input_in_gold_by_screenshot(PRODUCT_INPUT, product_number, 120)
                 pyautogui.hotkey('Alt', 't')  # Поиск.
@@ -388,16 +401,13 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
                         pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
                         item += 1
 
-                    logging.info("По номеру %s - %d документов." % (product_number, item))
-
                 else:
                     new_ser = pd.Series(['не найдено', 'не найдено'], index=['ДОС', 'Изготовитель'])
                     new_row = row._append(new_ser)  # Добавляем в DataFrame.
                     new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
 
-                # Добавляем в просмотренные
-                set_of_viewed_numbers.add(product_number)
                 count += 1
+                last_viewed_number = row.loc['Порядковый номер АМ']
 
     except ScreenshotNotFoundException as error:
         logging.error('Скриншот %s не найден', error.image_path)
@@ -405,15 +415,15 @@ def add_declaration_number_and_manufacturer(file: str, sheet: str):
 
     finally:
         # Записать DataFrame во временный xlsx файл.
-        new_df.to_excel(temp_df, index=False)
+        new_df.to_excel(gold_df, index=False)
         # А просмотренные коды товаров в текстовой файл.
-        write_viewed_numbers_to_file(VIEWED_GOLD_PRODUCTS, set_of_viewed_numbers)
+        write_viewed_numbers_to_file(VIEWED_GOLD_PRODUCTS, last_viewed_number)
         return count
 
 
 def launch_gold_module(attempts_for_range: int,
-                       input_file,
-                       sheet_in_input_file) -> None:
+                       input_file: str,
+                       output_file: str) -> None:
     """Запустить код из модуля."""
     logging.info(STARS)
     logging.info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
@@ -422,8 +432,7 @@ def launch_gold_module(attempts_for_range: int,
         start_iter = time.time()
         count = 0
         try:
-            count = add_declaration_number_and_manufacturer(input_file,
-                                                            sheet_in_input_file)
+            count = add_declaration_number_and_manufacturer(input_file, output_file)
         finally:
             logging.info("Итерация № %d окончена. Обработано - %d кодов товара. "
                          "Время выполнения %f." % (i, count, time.time() - start_iter))
@@ -431,4 +440,34 @@ def launch_gold_module(attempts_for_range: int,
 
 
 if __name__ == '__main__':
-    launch_gold_module(1, TWO_COLUMNS_FILE, 'gold')
+    launch_gold_module(1, TWO_COLUMNS_FILE)
+
+
+def write_viewed_numbers_to_file(text_file: str, number) -> None:
+    """Записать номера просмотренных документов в файл."""
+    with open(text_file, 'w', encoding='utf-8') as file:
+        file.write(str(number))
+
+
+def read_viewed_numbers_of_documents(text_file: str) -> int:
+    """Прочитать номера просмотренных документов из файла."""
+    if not os.path.isfile(text_file):
+        with open(text_file, 'w', encoding='utf-8') as file:
+            file.write('')
+
+    with open(text_file, 'r', encoding='utf-8') as file:
+        last_number = int(file.read())
+        return last_number
+
+
+def check_or_create_temporary_xlsx(temp_df: str) -> str:
+    """Проверить есть ли xlsx файл для временного хранения данных,
+    если да - открыть его, если нет_ создать."""
+    temp_file = temp_df
+    if os.path.isfile(temp_file):
+        return temp_file
+    workbook = openpyxl.Workbook()
+    logging.info("Создан файл %s" % FILE_GOLD)
+
+    workbook.save(temp_file)
+    return temp_file
