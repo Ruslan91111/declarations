@@ -82,7 +82,7 @@ JAVA_PROC = "java.exe"
 # Путь к файлам Tesseract OCR и poppler
 PATH_TO_TESSERACT = r'C:\Users\RIMinullin\AppData\Local\Programs\Tesseract-OCR\tesseract'
 pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
-path_to_poppler = r'../poppler-23.11.0/Library/bin'
+path_to_poppler = r'./poppler-23.11.0/Library/bin'
 
 STARS = '*' * 40
 
@@ -213,7 +213,7 @@ def navigate_menu_until_product_number_input():
     input_in_gold_by_screenshot(LOGIN_PLACE, LOGIN_VALUE, 20)  # Ввести логин.
     input_in_gold_by_screenshot(PASSWORD_PLACE, PASSWORD_VALUE, 20)  # Ввести пароль.
     wait_and_click_screenshot(LOGIN)  # Войти.
-    menu_33 = wait_and_click_screenshot(MENU_33)  # 33 пункт меню
+    menu_33 = wait_and_click_screenshot(MENU_33, timeout=30)  # 33 пункт меню
     pyautogui.doubleClick(menu_33)
     menu_33_4 = wait_and_click_screenshot(MENU_33_4)  # 33.4 пункт меню
     pyautogui.doubleClick(menu_33_4)
@@ -254,6 +254,39 @@ def activate_or_launch_gold():
     elif not active_firefox and not active_java:
         launch_firefox_for_gold_from_desktop()
         navigate_menu_until_product_number_input()
+
+
+##################################################################################
+# Вспомогательные функции - для работы с файлами.
+##################################################################################
+def write_viewed_numbers_to_file(text_file: str, number) -> None:
+    """Записать номера просмотренных документов в файл."""
+    with open(text_file, 'w', encoding='utf-8') as file:
+        file.write(str(number))
+
+
+def read_viewed_numbers_of_documents(text_file: str) -> int:
+    """Прочитать номера просмотренных документов из файла."""
+    if not os.path.isfile(text_file):
+        with open(text_file, 'w', encoding='utf-8') as file:
+            file.write('')
+
+    with open(text_file, 'r', encoding='utf-8') as file:
+        last_number = int(file.read())
+        return last_number
+
+
+def check_or_create_temporary_xlsx(temp_df: str) -> str:
+    """Проверить есть ли xlsx файл для временного хранения данных,
+    если да - открыть его, если нет_ создать."""
+    temp_file = temp_df
+    if os.path.isfile(temp_file):
+        return temp_file
+    workbook = openpyxl.Workbook()
+    logging.info("Создан файл %s" % FILE_GOLD)
+
+    workbook.save(temp_file)
+    return temp_file
 
 
 ##################################################################################
@@ -428,7 +461,7 @@ def launch_gold_module(attempts_for_range: int,
     logging.info(STARS)
     logging.info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
     for i in range(attempts_for_range):
-        logging.info("Старт итерации № %d", i)
+        logging.info("Старт итерации проверки данных в ГОЛД № %d", i)
         start_iter = time.time()
         count = 0
         try:
@@ -437,37 +470,3 @@ def launch_gold_module(attempts_for_range: int,
             logging.info("Итерация № %d окончена. Обработано - %d кодов товара. "
                          "Время выполнения %f." % (i, count, time.time() - start_iter))
     logging.info("Окончание работы программы по работе с ГОЛД - 'launch_gold_module'")
-
-
-if __name__ == '__main__':
-    launch_gold_module(1, TWO_COLUMNS_FILE)
-
-
-def write_viewed_numbers_to_file(text_file: str, number) -> None:
-    """Записать номера просмотренных документов в файл."""
-    with open(text_file, 'w', encoding='utf-8') as file:
-        file.write(str(number))
-
-
-def read_viewed_numbers_of_documents(text_file: str) -> int:
-    """Прочитать номера просмотренных документов из файла."""
-    if not os.path.isfile(text_file):
-        with open(text_file, 'w', encoding='utf-8') as file:
-            file.write('')
-
-    with open(text_file, 'r', encoding='utf-8') as file:
-        last_number = int(file.read())
-        return last_number
-
-
-def check_or_create_temporary_xlsx(temp_df: str) -> str:
-    """Проверить есть ли xlsx файл для временного хранения данных,
-    если да - открыть его, если нет_ создать."""
-    temp_file = temp_df
-    if os.path.isfile(temp_file):
-        return temp_file
-    workbook = openpyxl.Workbook()
-    logging.info("Создан файл %s" % FILE_GOLD)
-
-    workbook.save(temp_file)
-    return temp_file

@@ -30,7 +30,7 @@ class EgrulCaptchaException(Exception):
 
 
 class MaxIterationException(Exception):
-    """Возникла капча в ЕГРЮЛ."""
+    """Более 20 итераций на ФСА, запустить цикл поновой с новыми данными."""
     def __init__(self):
         super().__init__()
         self.msg = 'Более 20 итераций на ФСА.'
@@ -44,7 +44,7 @@ class PathNotPass(Exception):
 
 
 class FileNotExisting(Exception):
-    """'Путь не передан'"""
+    """Указанный файл не существует."""
     def __init__(self):
         super().__init__()
         self.msg = 'Указанный файл не существует.'

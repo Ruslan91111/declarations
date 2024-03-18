@@ -2,6 +2,7 @@
 import datetime
 import logging
 import os
+import shutil
 
 import pandas as pd
 
@@ -14,8 +15,10 @@ from monitoring_in_web import launch_checking
 # Сообщения для пользователя.
 ##################################################################################
 MESSAGE_FOR_USER_VERIFIABLE_FILE = (
-    'Введите полный путь до файла xlsx, нуждающегося в проверке, '
-    'в том числе название файла и расширение:\n>>>')
+    'Убедитесь, что файл Excel, нуждающийся в проверке, находится на рабочем столе.\n'
+    'Введите название файла, без пути и расширения, после чего нажмите <Enter>.\n'
+    'Надежнее всего скопировать наименование файла в свойствах файла\n'
+    'или скопировать наименование файла при переименовании\n>>>')
 
 
 ##################################################################################
@@ -27,6 +30,7 @@ FILE_FOR_TWO_COLUMNS = r'.\two_columns_%s.xlsx' % MONTH
 FILE_GOLD = r'./gold_data_%s.xlsx' % MONTH
 FILE_RESULT = r'.\result_data_after_web_%s.xlsx' % MONTH
 LOGGING_FILE = r'.\monitoring.log'
+PATH_TO_DESKTOP = "c:\\Users\\RIMinullin\\Desktop\\"
 
 
 ##################################################################################
@@ -47,6 +51,8 @@ logging.basicConfig(
 def get_path_for_existing_file(message_for_user: str) -> str:
     """Получить путь от пользователя к существующему файлу."""
     path_from_user = input(message_for_user)
+    path_from_user = PATH_TO_DESKTOP + path_from_user + '.xlsx'
+
     # Если путь указан неверно.
     if not path_from_user:
         raise PathNotPass
@@ -116,15 +122,24 @@ def automatic_launch_program():
         result = pd.read_excel(FILE_RESULT)
         gold = pd.read_excel(FILE_GOLD)
         if result['Порядковый номер АМ'].iloc[-1] != gold['Порядковый номер АМ'].iloc[-1]:
-
             logging.info(f"Не все строки проверены после на интернет-ресурсах после GOLD. "
                          f"Последняя строка в файле {FILE_RESULT} - "
                          f"{result['Порядковый номер АМ'].iloc[-1]}. \n "
                          f"Последняя строка в файле {FILE_GOLD} - "
                          f"{gold['Порядковый номер АМ'].iloc[-1]}")
             logging.info("Продолжается проверка на интернет-ресурсах.")
-
             launch_checking(50, FILE_GOLD, FILE_RESULT)
+        else:
+            logging.info("Проверка полностью завершена.")
+
+            # Указываем путь, куда нужно скопировать файл
+            destination_file = os.path.join(PATH_TO_DESKTOP,
+                                            os.path.basename('Результат проверки мониторинга.xlsx'))
+
+            # Копируем файл
+            shutil.copyfile(FILE_RESULT, destination_file)
+            logging.info(f'Файл скопирован на рабочий стол: {destination_file}')
+            print(f'Файл скопирован на рабочий стол: {destination_file}')
 
 
 if __name__ == '__main__':

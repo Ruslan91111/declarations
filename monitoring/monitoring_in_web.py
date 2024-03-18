@@ -20,8 +20,8 @@ from selenium.common.exceptions import (NoSuchElementException,
                                         ElementClickInterceptedException,
                                         StaleElementReferenceException)
 
-from monitoring.config import PROXY
-from monitoring.exceptions import (SeleniumNotFoundException,
+from config import PROXY
+from exceptions import (SeleniumNotFoundException,
                                    EgrulCaptchaException,
                                    MaxIterationException)
 
@@ -103,7 +103,6 @@ X_PATHS = {
     'gost_input_field': '//*[@id="poisk-form"]/input',
     'gost_search_button': '//*[@id="gost_filter"]',
     'gost_status': '//*[@id="data-box"]/div/div/div/p/b',
-
 }
 
 # Словарь с прочерками.
@@ -582,8 +581,8 @@ def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
     try:
         for _, row in gold_df.iterrows():  # Перебираем документы.
 
-            # Если более 25 раз обращаемся в ФСА, то поднять исключение.
-            if times > 25:
+            # Если более 20 раз обращаемся в ФСА, то поднять исключение.
+            if times > 20:
                 raise MaxIterationException
 
             # Пропускаем ранее просмотренные.
@@ -807,8 +806,7 @@ def launch_checking(range_, input_file, output_file):
             # Экземпляр браузера и wait.
             browser = webdriver.Chrome(service=service, options=options)
             wait = WebDriverWait(browser, 5)
-            logging.info("Старт итерации № %d", i)
-            logging.info(options.arguments)
+            logging.info("Старт итерации проверки данных в интернете № %d", i)
             checking_data_on_web(input_file, output_file, browser, wait)
 
         except SeleniumNotFoundException as error:
