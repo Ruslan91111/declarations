@@ -1,7 +1,31 @@
-"""Модуль проверки"""
+"""
+Модуль работы кода с интернет-ресурсами, а именно, сайтами проверки данных: ФСА, СГР, ГОСТ.
+
+Содержит функции:
+    add_egrul_information
+    get_address_from_egrul
+    _compare_addresses
+    add_gost_information
+    check_gost
+    _get_dict_from_text_nsi
+    get_data_from_nsi
+    make_new_tab
+    make_all_required_tabs
+    make_dict_ogrn_address
+    check_number_declaration
+    make_series_for_result
+    check_or_create_result_xlsx
+    write_viewed_numbers_to_file
+    read_viewed_numbers_of_documents
+    checking_data_in_iteration_through_browser - основная функция
+    launch_checking - запуск кода
+класс:
+    FSAScrapper - для работы с сайтом ФСА с сбора данных с него по каждой декларации.
+"""
 import logging
 import os
 import random
+import sys
 import time
 from datetime import datetime
 import re
@@ -18,12 +42,10 @@ from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import (NoSuchElementException,
                                         TimeoutException,
                                         ElementClickInterceptedException,
-                                        StaleElementReferenceException)
+                                        StaleElementReferenceException, NoSuchWindowException)
 
 from config import PROXY
-from exceptions import (SeleniumNotFoundException,
-                                   EgrulCaptchaException,
-                                   MaxIterationException)
+from exceptions import (EgrulCaptchaException, MaxIterationException, StopBrowserException)
 
 ##################################################################################
 # Константы
@@ -40,8 +62,6 @@ PATH_TO_DRIVER = r'.\chromedriver.exe'
 
 # Файлы
 VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_web_numbers.txt'
-INPUT_FILE = r'gold_data.xlsx'
-RESULT_FILE = r'result_data_after_web.xlsx'
 LOGGING_FILE = r'.\monitoring.log'
 
 # Подстроки, которые необходимо удалить из адресов перед их сравнением.
@@ -223,7 +243,8 @@ def add_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
 
 
 def get_address_from_egrul(data_web: dict, org: str, browser_, wait_) -> dict:
-    """Взять адрес с сайта ЕГРЮЛ по ОГРН. Если ОГРН нет, то так и записать.
+    """
+    Взять адрес с сайта ЕГРЮЛ по ОГРН. Если ОГРН нет, то так и записать.
 
     : param data_web: словарь с данными о документе, полученными с сайта, в том числе юр.лицах,
     : param org: строковое обозначение типа организации заявитель или изготовитель,
@@ -555,82 +576,8 @@ def read_viewed_numbers_of_documents(text_file: str) -> int:
 
 
 ##################################################################################
-# Главная функция для работы с сайтами через браузер.
+# Класс для работы с сайтом ФСА.
 ##################################################################################
-def checking_data_on_web(input_file: str, output_file: str, browser_, wait_):
-    """Основная функция - работа с данными в вебе, на сайтах,
-    последующее их преобразование и работы с ними в DataFrame."""
-    output_file = check_or_create_result_xlsx(output_file)  # Итоговый файл.
-    # Структуры данных, необходимые для работы кода.
-    gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
-    old_df = pd.read_excel(output_file)  # DataFrame из уже проверенных данных.
-    new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])  # Новый DataFrame, для итоговых данных
-    dict_ogrn_address = make_dict_ogrn_address(output_file)  # Словарь ОГРН и адресов.
-
-    try:
-        last_viewed_number = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
-        if last_viewed_number is None:
-            last_viewed_number = 0
-    except:
-        last_viewed_number = 0
-
-    # Создаем в браузере 5 вкладок.
-    tabs = make_all_required_tabs(browser_)  # Словарь вкладок
-    times = 0
-
-    try:
-        for _, row in gold_df.iterrows():  # Перебираем документы.
-
-            # Если более 20 раз обращаемся в ФСА, то поднять исключение.
-            if times > 20:
-                raise MaxIterationException
-
-            # Пропускаем ранее просмотренные.
-            if int(row.name) < last_viewed_number:
-                continue
-
-            doc_number = row['ДОС']  # Номер документа из старого DataFrame из ГОЛД
-
-            # Если ранее не просматривали.
-            data = {}
-            # Прогоняем через паттерны, определяем тип документа.
-            type_of_doc = check_number_declaration(doc_number)
-            if type_of_doc is None:  # Если номер документа не ФСА и не СГР
-                data['Статус на сайте'] = '-'
-            elif type_of_doc == 'nsi':  # Если СГР
-                browser_.switch_to.window(tabs['nsi'])
-                data = get_data_from_nsi(doc_number, browser_, wait_)
-            elif type_of_doc in {'declaration', 'certificate'}:  # Если ФСА
-                fsa_scrapper = FSAScrapper(browser_, wait_)
-                data = fsa_scrapper.get_data_from_fsa(doc_number, type_of_doc, tabs)
-                times += 1
-
-            # Если статус документа 'рабочий', то собрать данные с ЕГРЮЛ и ГОСТ.
-            if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
-                data, dict_ogrn_address = add_egrul_information(
-                    data, tabs, dict_ogrn_address, browser_, wait_)  # ЕГРЮЛ
-                data = add_gost_information(data, tabs, browser_, wait_)  # ГОСТ
-
-            # Формируем Series с собранными данными и добавляем его в DataFrame.
-            new_series = make_series_for_result(data)
-            new_row = row._append(new_series)  # Объединяем со старым Series
-            new_df = new_df._append(new_row, ignore_index=True)
-
-    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
-            StaleElementReferenceException, MaxIterationException) as e:
-        logging.error(e.msg)
-        last_viewed_number = row.name
-        raise SeleniumNotFoundException from e
-
-    finally:  # Записать новый DataFrame и просмотренные номера.
-        # output_file = check_or_create_temporary_xlsx(output_file)
-        total_df = pd.concat([old_df, new_df])
-        with pd.ExcelWriter(output_file, engine="openpyxl", mode='w') as writer:
-            total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
-        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, last_viewed_number)
-        logging.info('Номер документа, на котором произошло исключение - %s' % doc_number)
-
-
 class FSAScrapper:
     """Класс для сбора данных с сайта ФСА."""
 
@@ -651,6 +598,8 @@ class FSAScrapper:
         button_search = self.wait.until(EC.element_to_be_clickable(
             (By.XPATH, X_PATHS['fsa_search_button'])))
         button_search.click()
+        request_time = time.time()
+        return request_time
 
     def pick_needed_document_in_list(self, document_number: str):
         """Обновить браузер, дождаться список документов,
@@ -772,24 +721,135 @@ class FSAScrapper:
             self.browser.switch_to.window(tabs['certificate'])
 
         # На сайте вводим номер декларации.
-        self.input_document_number(doc_number)
+        request_time = self.input_document_number(doc_number)
         time.sleep(random.randint(1, 3))
 
         # Выбираем нужный документ.
         picked = self.pick_needed_document_in_list(doc_number)
         if picked is True:
             data = self.get_data_on_document(type_of_doc)  # Данные ФСА.
-            return data
+            return data, request_time
 
-        return {'Статус на сайте': "Статус не найден на ФСА"}
+        return {'Статус на сайте': "Статус не найден на ФСА"}, request_time
 
 
-def launch_checking(range_, input_file, output_file):
-    """Запуск кода из модуля в цикле. При каждой итерации,
-    создается браузер. По окончании итерации браузер закрывается."""
+##################################################################################
+# Главная функция для работы с сайтами через браузер.
+##################################################################################
+def checking_data_in_iteration_through_browser(
+        input_file: str, output_file: str, browser_, wait_) -> None:
+    """
+    Проверка данных на интернет ресурсах.
 
-    logging.info("Начало работы программы по работе с WEB мониторингом - 'monitoring_in_web'")
+    Открывает файл excel с данными после проверки в ГОЛД, определяет откуда продолжать проверку,
+    читает построчно, берет номер документа, определяет тип документа,
+    исходя из типа, собирает данные с сайтов ФСА, СГР, вызывая при этом
+    соответствующую функцию или метод. Также добавляет к данным
+    сведения с ЕГРЮЛ и по ГОСТ. Полученные с интернет ресурсов данные добавляет к
+    данным из ГОЛД, создает Series который добавляет к новому DataFrame записывает его в файл.
+    Также отслеживает количество обращений к сайту ФСА и в случае превышения 20 раз,
+    вызывает исключение, на которое внешняя функция закрывает браузер и
+    открывает браузер с новыми фейковыми данными.
+    Также отслеживает время, прошедшее с последнего запроса к сайту ФСА.
+    """
+
+    # Итоговый файл проверяем есть ли он или нет, если нет, то создаем.
+    output_file = check_or_create_result_xlsx(output_file)
+
+    gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
+    old_df = pd.read_excel(output_file)  # DataFrame из уже проверенных в WEB данных.
+    new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])  # Новый DataFrame, для конечного результата
+    # Словарь из ОГРН и адресов.
+    dict_ogrn_address = make_dict_ogrn_address(output_file)
+
+    # Определяем последнюю проверенную из ГОЛД файла строку.
+    try:
+        last_row_name_from_gold = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
+        if last_row_name_from_gold is None:
+            last_row_name_from_gold = 0
+    except:
+        last_row_name_from_gold = 0
+
+    # Создаем в браузере 5 вкладок для попеременной работы с сайтами.
+    tabs = make_all_required_tabs(browser_)  # Словарь вкладок
+    times = 0  # Количество обращений к сайту ФСА.
+    request_time = 0  # Прошедшее с последнего запроса к сайту ФСА время.
+
+    try:
+        # Через цикл перебираем строки в ГОЛД файле.
+        for _, row in gold_df.iloc[last_row_name_from_gold:].iterrows():
+
+            # Если более 20 раз обращались к сайту в ФСА, то поднять исключение,
+            # открыть новый браузер с новыми фейковыми данными.
+            if times > 20:
+                raise MaxIterationException
+
+            data = {}
+            doc_number = row['ДОС']  # Номер документа из DataFrame из ГОЛД
+            # Прогоняем через паттерны, определяем тип документа.
+            type_of_doc = check_number_declaration(doc_number)
+
+            # Если номер документа не ФСА и не СГР
+            if type_of_doc is None:
+                data['Статус на сайте'] = '-'
+            # Если тип документа СГР
+            elif type_of_doc == 'nsi':
+                browser_.switch_to.window(tabs['nsi'])
+                data = get_data_from_nsi(doc_number, browser_, wait_)
+            # Если тип документа ФСА
+            elif type_of_doc in {'declaration', 'certificate'}:
+                # Высчитываем время, прошедшее с последнего обращения к сайту ФСА.
+                time_from_last_request = time.time() - request_time
+                # Проверяем прошло ли 15 секунд.
+                if time_from_last_request < 15:
+                    time.sleep(15 - time_from_last_request)
+                # Собираем данные по декларации с сайта ФСА.
+                fsa_scrapper = FSAScrapper(browser_, wait_)
+                data, request_time = fsa_scrapper.get_data_from_fsa(doc_number, type_of_doc, tabs)
+                times += 1  # Увеличиваем счетчик обращения к сайту ФСА
+
+            # Если статус документа 'рабочий'(действующий),
+            # то собрать и добавить данные с ЕГРЮЛ и ГОСТ.
+            if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
+                data, dict_ogrn_address = add_egrul_information(
+                    data, tabs, dict_ogrn_address, browser_, wait_)  # ЕГРЮЛ
+                data = add_gost_information(data, tabs, browser_, wait_)  # ГОСТ
+
+            # Формируем Series с собранными данными и добавляем его в DataFrame.
+            new_series = make_series_for_result(data)
+            new_row = row._append(new_series)  # Объединяем со старым Series
+            new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DF
+
+        # При нормальной работе цикла записать последнюю строку.
+        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+        # Если была последняя строка из ГОЛД файла выйти из кода.
+        if row.name == gold_df.iloc[-1].name:
+            sys.exit()
+
+    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
+            StaleElementReferenceException, MaxIterationException, NoSuchWindowException) as e:
+        logging.error(e.msg)
+        raise StopBrowserException
+
+    finally:
+        # Записать новый DataFrame и последнюю строку из голда в файлы.
+        total_df = pd.concat([old_df, new_df])
+        with pd.ExcelWriter(output_file, engine="openpyxl", mode='w') as writer:
+            total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
+        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+
+
+def launch_checking(range_: int, input_file: str, output_file: str):
+    """
+    Запуск кода из модуля в цикле.
+
+    Условно внешняя функция для функции checking_data_in_iteration_through_browser.
+    Запускает ее в цикле, каждый раз с новым браузером и данными.
+    """
+
+    logging.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, ЕГРЮЛ, ГОСТ.")
     for i in range(range_):
+
         try:
             # Настройки браузера.
             service = Service(PATH_TO_DRIVER)
@@ -800,20 +860,17 @@ def launch_checking(range_, input_file, output_file):
             if i % 2 == 0:
                 options.add_argument(f'--proxy-server={PROXY}')
             # options.add_argument('--headless')
+            # Фейковый данные user agent
             ua = UserAgent()
             user_agent = ua.random
             options.add_argument(f'--user-agent={user_agent}')
-            # Экземпляр браузера и wait.
             browser = webdriver.Chrome(service=service, options=options)
             wait = WebDriverWait(browser, 5)
             logging.info("Старт итерации проверки данных в интернете № %d", i)
-            checking_data_on_web(input_file, output_file, browser, wait)
+            # Запуск внутренней функции проверки данных в интернете.
+            checking_data_in_iteration_through_browser(input_file, output_file, browser, wait)
 
-        except SeleniumNotFoundException as error:
+        except StopBrowserException as error:
             logging.error(error.msg)
             browser.quit()  # Закрыть браузер.
             time.sleep(random.randint(1, 3))
-
-
-if __name__ == '__main__':
-    launch_checking(20, INPUT_FILE, RESULT_FILE)

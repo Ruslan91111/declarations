@@ -36,6 +36,13 @@ class MaxIterationException(Exception):
         self.msg = 'Более 20 итераций на ФСА.'
 
 
+class StopBrowserException(Exception):
+    """Произошла ошибка в работе браузера, прерывающая итерацию."""
+    def __init__(self):
+        super().__init__()
+        self.msg = 'Произошла ошибка в работе браузера, прерывающая итерацию.'
+
+
 class PathNotPass(Exception):
     """'Путь не передан'"""
     def __init__(self):
