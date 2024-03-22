@@ -25,10 +25,7 @@ pyautogui = "^0.9.54"
 pyperclip = "^1.8.2"
 psutil = "^5.9.8"
 pygetwindow = "^0.0.9"
-keyboard = "^0.13.5"
-fuzzywuzzy = "^0.18.0"
-pyqt6 = "^6.6.1"
-pyinstaller = "^6.5.0"
+fake-useragent = "^1.5.1"
 
 
 [build-system]

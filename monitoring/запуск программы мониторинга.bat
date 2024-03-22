@@ -1,4 +1,4 @@
 @echo off
-call C:\Users\RIMinullin\PycharmProjects\someProject\venv\Scripts\activate.bat
-cd C:\Users\RIMinullin\PycharmProjects\someProject\monitoring
+call .\venv\Scripts\activate.bat
 python main_file.py
+exit
