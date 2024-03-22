@@ -16,7 +16,6 @@
     make_series_for_result
     check_or_create_result_xlsx
     write_viewed_numbers_to_file
-    read_viewed_numbers_of_documents
     checking_data_in_iteration_through_browser - основная функция
     launch_checking - запуск кода
 класс:
@@ -46,7 +45,7 @@ from selenium.common.exceptions import (NoSuchElementException,
 
 from config import PROXY
 from exceptions import (EgrulCaptchaException, MaxIterationException, StopBrowserException)
-
+from gold_data_manager import write_last_viewed_number_to_file, read_last_viewed_number_from_file
 ##################################################################################
 # Константы
 ##################################################################################
@@ -202,8 +201,8 @@ logging.basicConfig(
 # Работа с адресами - проверяем адреса юридических лиц, взятые с сайта ФСА.
 # Дополнительно берем адреса по ОГРН с сайта ЕГРЮЛ и сравниваем между собой.
 ##################################################################################
-def add_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
-                          browser_, wait_) -> (dict, dict):
+def add_to_data_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
+                                  browser_, wait_) -> (dict, dict):
     """Добавить в словарь данных о проверяемом документе адресов из ЕГРЮЛ.
 
     Предварительно проверить не проверяли ли ОГРН юрлиц ранее, если да,
@@ -237,7 +236,8 @@ def add_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
     if 'Нет ОГРН' in data.values():  # Если у поставщика или изготовителя не было ОГРН.
         data['Соответствие адресов с ЕГРЮЛ'] = 'НЕТ ОГРН'
     else:
-        data = _compare_addresses(data)  # ОГРН был - вызвать функцию сравнения адресов.
+        # ОГРН был - вызвать функцию сравнения адресов.
+        data = _compare_addresses(data)  
 
     return data, dict_ogrn_address
 
@@ -318,7 +318,7 @@ def _compare_addresses(data: dict) -> dict:
 ##################################################################################
 # Работа с ГОСТ.
 ##################################################################################
-def add_gost_information(data: dict, tabs: dict, browser_, wait_) -> dict:
+def add_to_data_gost_information(data: dict, tabs: dict, browser_, wait_) -> dict:
     """
     Добавить к словарю данные о статусе ГОСТ.
 
@@ -326,11 +326,11 @@ def add_gost_information(data: dict, tabs: dict, browser_, wait_) -> dict:
     : param tabs: словарь с вкладками для переключения в браузере
     """
     browser_.switch_to.window(tabs['gost'])
-    data = check_gost(data, wait_)  # ГОСТ.
+    data = check_gost_on_web(data, wait_)  # ГОСТ.
     return data
 
 
-def check_gost(data: dict, wait_) -> dict:
+def check_gost_on_web(data: dict, wait_) -> dict:
     """Проверить ГОСТ, взятый с сайта(ФСА или nsi) на сайте проверки ГОСТ.
      Добавить в словарь вывод о статусе ГОСТ."""
 
@@ -416,7 +416,7 @@ def _get_dict_from_text_nsi(text: str, type_of_org: str) -> dict:
     return data
 
 
-def get_data_from_nsi(document_number, browser_, wait_) -> None | dict:
+def get_data_from_nsi_web(document_number, browser_, wait_) -> None | dict:
     """Собрать данные по свидетельству о государственной регистрации с сайта nsi.
     Вернет либо словарь, достаточный для добавления и последующей записи, либо None"""
 
@@ -514,7 +514,7 @@ def make_dict_ogrn_address(file: str) -> dict:
     return dict_
 
 
-def check_number_declaration(number: str) -> str | None:
+def define_type_of_doc(number: str) -> str | None:
     """Проверить номер декларации из xlsx файла и определить какой тип документа."""
     pattern_declaration1 = r'(ЕАЭС N RU Д-[\w\.]+)'
     pattern_declaration2 = r'(РОСС RU Д-[\w\.]+)'
@@ -547,7 +547,7 @@ def make_series_for_result(data: dict) -> pd.Series:
     return series
 
 
-def check_or_create_result_xlsx(file: str) -> str:
+def return_existing_result_file_or_create_new(file: str) -> str:
     """Проверить есть ли xlsx файл для временного хранения данных,
     если да - открыть его, если нет_ создать."""
     if os.path.isfile(file):
@@ -556,23 +556,6 @@ def check_or_create_result_xlsx(file: str) -> str:
     df.to_excel(file)
 
     return file
-
-
-def write_viewed_numbers_to_file(text_file: str, number) -> None:
-    """Записать номера просмотренных документов в файл."""
-    with open(text_file, 'w', encoding='utf-8') as file:
-        file.write(str(number))
-
-
-def read_viewed_numbers_of_documents(text_file: str) -> int:
-    """Прочитать номер последнего просмотренного документа из файла."""
-    if not os.path.isfile(text_file):
-        with open(text_file, 'w', encoding='utf-8') as file:
-            file.write('')
-
-    with open(text_file, 'r', encoding='utf-8') as file:
-        last_number = int(file.read())
-        return last_number
 
 
 ##################################################################################
@@ -754,7 +737,7 @@ def checking_data_in_iteration_through_browser(
     """
 
     # Итоговый файл проверяем есть ли он или нет, если нет, то создаем.
-    output_file = check_or_create_result_xlsx(output_file)
+    output_file = return_existing_result_file_or_create_new(output_file)
 
     gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
     old_df = pd.read_excel(output_file)  # DataFrame из уже проверенных в WEB данных.
@@ -764,7 +747,7 @@ def checking_data_in_iteration_through_browser(
 
     # Определяем последнюю проверенную из ГОЛД файла строку.
     try:
-        last_row_name_from_gold = read_viewed_numbers_of_documents(VIEWED_IN_FSA_NUMBERS)
+        last_row_name_from_gold = read_last_viewed_number_from_file(VIEWED_IN_FSA_NUMBERS)
         if last_row_name_from_gold is None:
             last_row_name_from_gold = 0
     except:
@@ -787,7 +770,7 @@ def checking_data_in_iteration_through_browser(
             data = {}
             doc_number = row['ДОС']  # Номер документа из DataFrame из ГОЛД
             # Прогоняем через паттерны, определяем тип документа.
-            type_of_doc = check_number_declaration(doc_number)
+            type_of_doc = define_type_of_doc(doc_number)
 
             # Если номер документа не ФСА и не СГР
             if type_of_doc is None:
@@ -795,7 +778,7 @@ def checking_data_in_iteration_through_browser(
             # Если тип документа СГР
             elif type_of_doc == 'nsi':
                 browser_.switch_to.window(tabs['nsi'])
-                data = get_data_from_nsi(doc_number, browser_, wait_)
+                data = get_data_from_nsi_web(doc_number, browser_, wait_)
             # Если тип документа ФСА
             elif type_of_doc in {'declaration', 'certificate'}:
                 # Высчитываем время, прошедшее с последнего обращения к сайту ФСА.
@@ -811,9 +794,9 @@ def checking_data_in_iteration_through_browser(
             # Если статус документа 'рабочий'(действующий),
             # то собрать и добавить данные с ЕГРЮЛ и ГОСТ.
             if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
-                data, dict_ogrn_address = add_egrul_information(
+                data, dict_ogrn_address = add_to_data_egrul_information(
                     data, tabs, dict_ogrn_address, browser_, wait_)  # ЕГРЮЛ
-                data = add_gost_information(data, tabs, browser_, wait_)  # ГОСТ
+                data = add_to_data_gost_information(data, tabs, browser_, wait_)  # ГОСТ
 
             # Формируем Series с собранными данными и добавляем его в DataFrame.
             new_series = make_series_for_result(data)
@@ -821,7 +804,7 @@ def checking_data_in_iteration_through_browser(
             new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DF
 
         # При нормальной работе цикла записать последнюю строку.
-        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+        write_last_viewed_number_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
         # Если была последняя строка из ГОЛД файла выйти из кода.
         if row.name == gold_df.iloc[-1].name:
             sys.exit()
@@ -836,7 +819,7 @@ def checking_data_in_iteration_through_browser(
         total_df = pd.concat([old_df, new_df])
         with pd.ExcelWriter(output_file, engine="openpyxl", mode='w') as writer:
             total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
-        write_viewed_numbers_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+        write_last_viewed_number_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
 
 
 def launch_checking(range_: int, input_file: str, output_file: str):

@@ -9,7 +9,7 @@ import pandas as pd
 
 from exceptions import PathNotPass, FileNotExisting
 from gold_data_manager import launch_gold_module
-from monitoring_in_web import launch_checking, write_viewed_numbers_to_file, VIEWED_IN_FSA_NUMBERS
+from monitoring_in_web import launch_checking
 
 ##################################################################################
 # Сообщения для пользователя.
@@ -116,7 +116,12 @@ def automatic_launch_program():
         logging.info("Файл %s уже существует.", FILE_GOLD)
         two_columns = pd.read_excel(FILE_FOR_TWO_COLUMNS)
         gold = pd.read_excel(FILE_GOLD)
-        if two_columns['Порядковый номер АМ'].iloc[-1] != gold['Порядковый номер АМ'].iloc[-1]:
+
+        if len(gold) == 0:
+            launch_gold_module(50, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+            logging.info("Начата проверка в ГОЛД.")
+
+        elif two_columns['Порядковый номер АМ'].iloc[-1] != gold['Порядковый номер АМ'].iloc[-1]:
             logging.info(f"Не все строки проверены в GOLD. "
                          f"Последний номер продукта в файле {FILE_FOR_TWO_COLUMNS} - "
                          f"{two_columns['Порядковый номер АМ'].iloc[-1]}. \n "
@@ -153,6 +158,7 @@ def automatic_launch_program():
             logging.info(f'Файл скопирован на рабочий стол: {destination_file}')
             print(f'Проверка полностью завершена. \nФайл скопирован на рабочий стол: {destination_file}')
             sys.exit()
+
 
 if __name__ == '__main__':
     automatic_launch_program()
