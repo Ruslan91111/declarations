@@ -34,7 +34,7 @@ from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
 # КОНСТАНТЫ - скриншоты
 ##################################################################################
 # открыть ГОЛД и прокликать по меню.
-FIREFOX_ICON = r'.\screenshots\appicon.png'
+FIREFOX_ICON = r'.\screenshots\appicon3.png'
 FIREFOX_ICON_PANEL = r'.\screenshots\firefox_icon_panel.png'
 MENU_ICON = r'.\screenshots\menu_icon.png'
 GOLD_LOADED = r'.\screenshots\gold_loaded.png'
@@ -81,9 +81,9 @@ FIREFOX_PROC = "firefox.exe"
 JAVA_PROC = "java.exe"
 
 # Путь к файлам Tesseract OCR и poppler
-PATH_TO_TESSERACT = r'C:\Users\RIMinullin\AppData\Local\Programs\Tesseract-OCR\tesseract'
+PATH_TO_TESSERACT = r'C:\Users\impersonal\AppData\Local\Programs\Tesseract-OCR\tesseract'
 pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
-path_to_poppler = r'./poppler-23.11.0/Library/bin'
+path_to_poppler = r'.././poppler-23.11.0/Library/bin'
 
 STARS = '*' * 40
 

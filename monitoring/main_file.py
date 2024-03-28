@@ -30,7 +30,7 @@ FILE_FOR_TWO_COLUMNS = r'.\two_columns_%s.xlsx' % MONTH
 FILE_GOLD = r'./gold_data_%s.xlsx' % MONTH
 FILE_RESULT = r'.\result_data_after_web_%s.xlsx' % MONTH
 LOGGING_FILE = r'.\monitoring.log'
-PATH_TO_DESKTOP = "c:\\Users\\RIMinullin\\Desktop\\"
+PATH_TO_DESKTOP = "c:\\Users\\impersonal\\Desktop\\"
 
 
 ##################################################################################
@@ -74,9 +74,9 @@ def create_sheet_write_codes_and_names(file_for_checking: str,
     """
     df = pd.read_excel(file_for_checking)
     new_df = pd.DataFrame({
-        'Порядковый номер АМ': range(1, len(df) - 1),
-        'Код товара': df['Unnamed: 6'][2:],
-        'Наименование товара': df['Unnamed: 7'][2:],
+        'Порядковый номер АМ': range(1, len(df['Товар']) + 1),
+        'Код товара': df['Код товара'],
+        'Наименование товара': df['Товар'],
     })
     with pd.ExcelWriter(file_of_results, mode='w') as writer:
         new_df.to_excel(writer, index=False)
@@ -146,7 +146,7 @@ def automatic_launch_program():
                          f"Длина файла {FILE_RESULT} - {len(result)} строк. \n "
                          f"Длина файла {FILE_GOLD} - {len(gold)} строк. ")
             logging.info("Продолжается проверка на интернет-ресурсах.")
-            launch_checking(50, FILE_GOLD, FILE_RESULT)
+            launch_checking(500, FILE_GOLD, FILE_RESULT)
 
         # Если в интернете проверены все строки, полученные из ГОЛД.
         else:

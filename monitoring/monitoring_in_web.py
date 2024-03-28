@@ -57,7 +57,7 @@ URL_GOST = "https://etr-torgi.ru/calc/check_gost/"
 date_today = datetime.now().strftime('%Y-%m-%d')
 URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
 
-PATH_TO_DRIVER = r'.\chromedriver.exe'
+PATH_TO_DRIVER = r'..\.\chromedriver.exe'
 
 # Файлы
 VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_web_numbers.txt'
@@ -262,8 +262,12 @@ def get_address_from_egrul(data_web: dict, org: str, browser_, wait_) -> dict:
             button_search.click()  # Нажать найти
 
             # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
-            text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
-            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
+            try:
+                text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
+                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
+            except:
+                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Ошибка noDataFound'
+
             browser_.refresh()  # Обновить вкладку, для следующего ввода.
 
         except TimeoutException:
@@ -365,12 +369,14 @@ def check_gost_on_web(data: dict, wait_) -> dict:
                     (By.XPATH, X_PATHS['gost_search_button'])))
                 button_search.click()  # Нажать найти
                 # Сохранить статус ГОСТа на сайте.
-                element = wait_.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['gost_status'])))
-                text = element.text
-                status_gost.add(text)
-
-            data['Статус НД'] = " ".join(status_gost)  # Сохранить значения с сайта ГОСТ
+                try:
+                    element = wait_.until(EC.element_to_be_clickable(
+                        (By.XPATH, X_PATHS['gost_status'])))
+                    text = element.text
+                    status_gost.add(text)
+                    data['Статус НД'] = " ".join(status_gost)  # Сохранить значения с сайта ГОСТ
+                except:
+                    data['Статус НД'] = 'Информация о стандарте не найдена.'
 
         else:  # Если данных о ГОСТе нет.
             data['Статус НД'] = '-'
@@ -382,7 +388,11 @@ def check_gost_on_web(data: dict, wait_) -> dict:
 # Работа с сайтом nsi - проверка свидетельства о гос.регистрации
 ##################################################################################
 def _get_dict_from_text_nsi(text: str, type_of_org: str) -> dict:
-    """Функция для поиска в тексте с сайта nsi для словаря данных по юридическому лицу. """
+    """
+    Функция формирует из текста с сайта nsi словарь данных по юридическому лицу.
+
+
+    """
     data = {}  # Словарь для возврата данных.
 
     # Ищем и добавляем в словарь наименование и адрес юр.лица.
@@ -810,8 +820,9 @@ def checking_data_in_iteration_through_browser(
             sys.exit()
 
     except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
-            StaleElementReferenceException, MaxIterationException, NoSuchWindowException) as e:
-        logging.error(e.msg)
+            StaleElementReferenceException, MaxIterationException, NoSuchWindowException,
+            KeyboardInterrupt) as e:
+        logging.error(e)
         raise StopBrowserException
 
     finally:
