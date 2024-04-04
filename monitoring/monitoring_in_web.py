@@ -21,7 +21,6 @@
 класс:
     FSAScrapper - для работы с сайтом ФСА с сбора данных с него по каждой декларации.
 """
-import logging
 import os
 import random
 import sys
@@ -45,7 +44,10 @@ from selenium.common.exceptions import (NoSuchElementException,
 
 from config import PROXY
 from exceptions import (EgrulCaptchaException, MaxIterationException, StopBrowserException)
-from gold_data_manager import write_last_viewed_number_to_file, read_last_viewed_number_from_file
+from gold_data_manager import write_last_viewed_number_to_file, read_last_viewed_number_from_file, \
+    DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR
+from logger_config import log_to_file_info, log_to_file_error
+
 ##################################################################################
 # Константы
 ##################################################################################
@@ -60,8 +62,7 @@ URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
 PATH_TO_DRIVER = r'..\.\chromedriver.exe'
 
 # Файлы
-VIEWED_IN_FSA_NUMBERS = r'.\viewed_in_web_numbers.txt'
-LOGGING_FILE = r'.\monitoring.log'
+VIEWED_IN_FSA_NUMBERS = r'.\%s\viewed_in_web_numbers_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR,MONTH_AND_YEAR)
 
 # Подстроки, которые необходимо удалить из адресов перед их сравнением.
 PARTS_TO_BE_REMOVED = [
@@ -95,7 +96,8 @@ X_PATHS = {
     'fsa_chapter': '//fgis-links-list/div/ul/li',
     'fsa_input_field': "//fgis-text/input",
     'fsa_search_button': "//button[contains(text(), 'Найти')]",
-    'fsa_pick_document': "//*/fgis-h-table-limited-text-cell/div[1]",
+    'fsa_pick_document': "/*//tbody/tr[2]/td[3]",
+    # 'fsa_pick_document': "//*/fgis-h-table-limited-text-cell/div[1]",
     'fsa_return_declaration': "//fgis-rds-view-declaration-toolbar/div/div[1]",
     'fsa_return_certificate': "//fgis-rss-view-certificate-toolbar/div/div[1]",
     'fsa_doc_status': '//fgis-toolbar-status/span',
@@ -182,18 +184,6 @@ COLUMNS_FOR_FINAL_DF = [
     'Статус НД',
     'ФИО',
 ]
-
-
-##################################################################################
-# Логгирование.
-##################################################################################
-logging.basicConfig(
-    level=logging.INFO,
-    filename=LOGGING_FILE,
-    filemode="a",
-    encoding='utf-8',
-    format="%(asctime)s %(levelname)s %(message)s",
-)
 
 
 ##################################################################################
@@ -408,23 +398,36 @@ def _get_dict_from_text_nsi(text: str, type_of_org: str) -> dict:
 
     # Ищем наименование юридического лица и сохраняем в данные.
     name_match = re.match(pattern_name, text)
-    data[f'Сокращенное наименование юридического лица {type_of_org}'] = name_match.group()
+    if name_match:
+        data[f'Сокращенное наименование юридического лица {type_of_org}'] = name_match.group()
+    else:
+        data[f'Сокращенное наименование юридического лица {type_of_org}'] = text
+        data[f'Адрес места нахождения {type_of_org}'] = text
+        data[f'ОГРН {type_of_org}'] = 'Нет ОГРН'
+        return data
 
-    # Ищем адрес в квадратных скобках и сохраняем в данные.
+    # Ищем адрес в квадратных скобках и индекс.
     address_paren_match = re.search(pattern_address_paren, text)
+    index_match = re.search(pattern_index, text)
+
     if address_paren_match:
         data[f'Адрес места нахождения {type_of_org}'] = address_paren_match.group(1)
+
     # Если нет адреса в квадратных скобках, то пытаемся найти адрес по почтовому индексу.
+    elif index_match:
+        data[f'Адрес места нахождения {type_of_org}'] = text[index_match.start():text.find('[')]
+
+    elif len(text) > len(name_match.group()):
+        data[f'Адрес места нахождения {type_of_org}'] = text[name_match.end():text.find('[')]
     else:
-        index_match = re.search(pattern_index, text)
-        if index_match:
-            data[f'Адрес места нахождения {type_of_org}'] = text[index_match.start():text.find('[')]
+        data[f'Адрес места нахождения {type_of_org}'] = '-'
 
     # Ищем ОГРН
     pattern_ogrn = r'\d{13}'  # Паттерн для поиска ОГРН.
     ogrn = re.search(pattern_ogrn, text)
+
     if isinstance(ogrn, NoneType):
-        data[f'ОГРН {type_of_org}'] = '-'
+        data[f'ОГРН {type_of_org}'] = 'Нет ОГРН'
     else:
         data[f'ОГРН {type_of_org}'] = ogrn.group()
 
@@ -606,7 +609,10 @@ class FSAScrapper:
             document_number = document_number.strip()
             needed_document_element = self.wait.until(EC.element_to_be_clickable(
                 (By.XPATH, X_PATHS['fsa_pick_document'])))  # Элемент для клика.
+            start_time = time.time()
             while needed_document_element.text.strip() != document_number:
+                if time.time() - start_time >= 30:
+                    return False
                 needed_document_element = self.wait.until(EC.element_to_be_clickable(
                     (By.XPATH, X_PATHS['fsa_pick_document'])))
             needed_document_element.click()
@@ -777,6 +783,12 @@ def checking_data_in_iteration_through_browser(
         # Через цикл перебираем строки в ГОЛД файле.
         for _, row in gold_df.iloc[last_row_name_from_gold:].iterrows():
 
+            if row.name % 10 == 0:
+                copy_xlsx_file = r'./%s/copies_of_web/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, row.name)
+                total_df = pd.concat([old_df, new_df])
+                with pd.ExcelWriter(copy_xlsx_file, engine="openpyxl", mode='w') as writer:
+                    total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
+
             # Если более 20 раз обращались к сайту в ФСА, то поднять исключение,
             # открыть новый браузер с новыми фейковыми данными.
             if times > 20:
@@ -827,7 +839,7 @@ def checking_data_in_iteration_through_browser(
     except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
             StaleElementReferenceException, MaxIterationException, NoSuchWindowException,
             KeyboardInterrupt) as e:
-        logging.error(e)
+        log_to_file_error(e)
         raise StopBrowserException
 
     finally:
@@ -846,7 +858,7 @@ def launch_checking(range_: int, input_file: str, output_file: str):
     Запускает ее в цикле, каждый раз с новым браузером и данными.
     """
 
-    logging.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, ЕГРЮЛ, ГОСТ.")
+    log_to_file_info("Старт проверки данных на интернет ресурсах: ФСА, СГР, ЕГРЮЛ, ГОСТ.")
     for i in range(range_):
 
         try:
@@ -858,6 +870,7 @@ def launch_checking(range_: int, input_file: str, output_file: str):
             # Подключать прокси на четных итерациях.
             if i % 2 == 0:
                 options.add_argument(f'--proxy-server={PROXY}')
+
             # options.add_argument('--headless')
             # Фейковый данные user agent
             ua = UserAgent()
@@ -865,11 +878,11 @@ def launch_checking(range_: int, input_file: str, output_file: str):
             options.add_argument(f'--user-agent={user_agent}')
             browser = webdriver.Chrome(service=service, options=options)
             wait = WebDriverWait(browser, 5)
-            logging.info("Старт итерации проверки данных в интернете № %d", i)
+            log_to_file_info("Старт итерации проверки данных в интернете № %d" % i)
             # Запуск внутренней функции проверки данных в интернете.
             checking_data_in_iteration_through_browser(input_file, output_file, browser, wait)
 
         except StopBrowserException as error:
-            logging.error(error.msg)
+            log_to_file_error(error.msg)
             browser.quit()  # Закрыть браузер.
             time.sleep(random.randint(1, 3))

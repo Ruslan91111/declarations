@@ -13,7 +13,6 @@ DataFrame сохраняет в файл './temp_df.xlsx'.
 который также считывается перед проверкой.
 
 """
-import logging
 import os
 import time
 
@@ -29,6 +28,7 @@ from datetime import datetime
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
 from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
+from logger_config import log_to_file_info
 
 ##################################################################################
 # КОНСТАНТЫ - скриншоты
@@ -68,13 +68,29 @@ OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
 # Иные КОНСТАНТЫ
 ##################################################################################
 # Файлы
-VIEWED_GOLD_PRODUCTS = r'.\viewed_products_in_gold.txt'  # Просмотренные номера деклараций
-TWO_COLUMNS_FILE = r'.\after1.xlsx'  # Итоговый файл с результатами мониторинга
-LOGGING_FILE = r'.\monitoring.log'
 
-MONTH = datetime.now().strftime('%B')  # Определяем месяц
-FILE_GOLD = r'./gold_data_{}.xlsx'.format(MONTH)
-FILE_FOR_TWO_COLUMNS = r'.\two_columns_%s.xlsx' % MONTH
+def return_or_create_dir(path_to_dir: str):
+    """
+    Проверить существует ли переданная директория.
+    """
+    if not os.path.isdir(path_to_dir):
+        os.mkdir(path_to_dir)
+        log_to_file_info("Создана директория по пути %s" % path_to_dir)
+    else:
+        log_to_file_info("Директория %s уже существует." % path_to_dir)
+    return path_to_dir
+
+
+##################################################################################
+# Пути к файлам.
+##################################################################################
+MONTH_AND_YEAR = datetime.now().strftime('%B_%Y')  # Определяем месяц
+DIR_CURRENT_MONTH_AND_YEAR = return_or_create_dir(r'./monitoring_for_%s' % MONTH_AND_YEAR)
+
+VIEWED_GOLD_PRODUCTS = r'.\%s\viewed_products_in_gold_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
+
+FILE_FOR_TWO_COLUMNS = r'.\%s\two_columns_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
+FILE_GOLD = r'.\%s\gold_data_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
 
 # Процессы для поиска в Windows.
 FIREFOX_PROC = "firefox.exe"
@@ -86,18 +102,6 @@ pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
 path_to_poppler = r'.././poppler-23.11.0/Library/bin'
 
 STARS = '*' * 40
-
-
-##################################################################################
-# Логгирование.
-##################################################################################
-logging.basicConfig(
-    level=logging.INFO,
-    filename=LOGGING_FILE,
-    filemode="a",
-    encoding='utf-8',
-    format="%(asctime)s %(levelname)s %(message)s",
-)
 
 
 ##################################################################################
@@ -283,7 +287,7 @@ def return_existing_xlsx_or_create_new(temp_df: str) -> str:
     if os.path.isfile(temp_file):
         return temp_file
     workbook = openpyxl.Workbook()
-    logging.info("Создан файл %s", FILE_GOLD)
+    log_to_file_info("Создан файл %s" % FILE_GOLD)
 
     workbook.save(temp_file)
     return temp_file
@@ -387,7 +391,7 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
             'Код товара',
             'Наименование товара',
             'ДОС',
-            'Изготовитель',])
+            'Изготовитель', ])
     else:  # Если нет, то читаем существующий
         new_df = pd.read_excel(gold_df)
 
@@ -412,37 +416,40 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
                 waiting_disappear_screenshot(LOADING_PRODUCT)  # Дождаться, загрузки страницы
                 # Проверить на наличие сообщения на экране об отсутствии данных.
                 error_no_data = handle_error_no_data_in_web()
-                if error_no_data is None:  # Если сообщения не было, то ищем центры.
-                    # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
-                    centres = search_coords_of_all_declarations_on_page_in_gold()
-                else:
-                    centres = None
 
-                if centres:  # Если найдены центры деклараций.
-                    item = 0  # Переменная для итерации по списку центров.
-                    while item < len(centres):
-                        pyautogui.doubleClick(centres[item])
-                        data_from_gold = get_data_about_one_doc_in_gold()
-                        new_ser = pd.Series([data_from_gold['ДОС'],
-                                             data_from_gold['Изготовитель']],
-                                            index=data_from_gold.keys())
-                        # Новый Series на 4 колонки с ДОС и изготовителем добавляем в новый DF.
-                        new_row = row._append(new_ser)
-                        new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
-
-                        pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
-                        item += 1
-
-                else:
-                    new_ser = pd.Series(['не найдено', 'не найдено'], index=['ДОС', 'Изготовитель'])
+                # Если в ГОЛД было серое сообщение об отсутствии данных, то записываем в Series и пропускаем итерацию.
+                if error_no_data:
+                    new_ser = pd.Series(['Нет данных в GOLD', 'Нет данных в GOLD'], index=['ДОС', 'Изготовитель'])
                     new_row = row._append(new_ser)  # Добавляем в DataFrame.
                     new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+                    continue
 
+                # Если сообщения не было, то ищем центры.
+                # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
+                for _ in range(5):
+                    centres = search_coords_of_all_declarations_on_page_in_gold()
+
+                    if centres:  # Если найдены центры деклараций.
+                        item = 0  # Переменная для итерации по списку центров.
+                        while item < len(centres):
+                            pyautogui.doubleClick(centres[item])
+                            data_from_gold = get_data_about_one_doc_in_gold()
+                            new_ser = pd.Series([data_from_gold['ДОС'],
+                                                 data_from_gold['Изготовитель']],
+                                                index=data_from_gold.keys())
+                            # Новый Series на 4 колонки с ДОС и изготовителем добавляем в новый DF.
+                            new_row = row._append(new_ser)
+                            new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+
+                            pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
+                            item += 1
+                    break
                 count += 1
                 last_viewed_number = row.loc['Порядковый номер АМ']
+        write_last_viewed_number_to_file(VIEWED_GOLD_PRODUCTS, last_viewed_number)
 
     except ScreenshotNotFoundException as error:
-        logging.error('Скриншот %s не найден', error.image_path)
+        log_to_file_info('Скриншот %s не найден' % error.image_path)
         raise StopIterationExceptionInGold
 
     finally:
@@ -462,16 +469,16 @@ def launch_gold_module(attempts_for_range: int, input_file: str, output_file: st
     :param input_file: файл с тремя колонками: порядковый номер АМ, код товара, наименование товара
     :param output_file: файл, в котором будет сохранен датафрейм с данными из ГОЛД.
     """
-    logging.info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
+    log_to_file_info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
     for i in range(attempts_for_range):
-        logging.info("Старт итерации проверки данных в ГОЛД № %d", i)
+        log_to_file_info("Старт итерации проверки данных в ГОЛД № %d" % i)
         start_iter = time.time()
         count = 0
         try:
             count = add_doc_numbers_and_manufacturers_in_df(input_file, output_file)
         finally:
-            logging.info("Итерация № %d окончена. Обработано - %d кодов товара. "
-                         "Время выполнения %f." % (i, count, time.time() - start_iter))
+            log_to_file_info("Итерация № %d окончена. Обработано - %d кодов товара. "
+                        "Время выполнения %f." % (i, count, time.time() - start_iter))
 
             two_columns = pd.read_excel(FILE_FOR_TWO_COLUMNS)
             gold = pd.read_excel(FILE_GOLD)
@@ -481,4 +488,4 @@ def launch_gold_module(attempts_for_range: int, input_file: str, output_file: st
                     break
             except KeyError:
                 pass
-    logging.info("Окончание работы программы по работе с ГОЛД - 'launch_gold_module'")
+    log_to_file_info("Окончание работы программы по работе с ГОЛД - 'launch_gold_module'")
