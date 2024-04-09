@@ -46,6 +46,7 @@ LOGIN = r'.\screenshots\enter.png'
 MENU_33 = r'.\screenshots\menu_33.png'
 MENU_33_4 = r'.\screenshots\33-4.png'
 TO_SEAL_OVERDUE = r'.\screenshots\seal_overdue.png'
+APPLICANT_CODE = r'.\screenshots\applicant_code.png'
 
 # Для работы с конкретными карточками деклараций.
 PRODUCT_INPUT = r'.\screenshots\product_input_number.png'
@@ -166,6 +167,7 @@ def input_in_gold_by_screenshot(screenshot: str, string_for_input: str, x_offset
     x, y = pyautogui.position()
     pyautogui.moveTo(x + x_offset, y)  # Смещаемся по оси x вправо от скриншота, в поле для ввода.
     pyautogui.doubleClick()
+    pyautogui.hotkey('ctrl', 'a')
     pyautogui.press('backspace')  # Очистить поле
     pyperclip.copy(string_for_input)
     pyautogui.hotkey('ctrl', 'v')  # Вставить значение.

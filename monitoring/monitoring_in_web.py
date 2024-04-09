@@ -62,28 +62,39 @@ URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
 PATH_TO_DRIVER = r'..\.\chromedriver.exe'
 
 # Файлы
-VIEWED_IN_FSA_NUMBERS = r'.\%s\viewed_in_web_numbers_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR,MONTH_AND_YEAR)
+VIEWED_IN_FSA_NUMBERS = r'.\%s\viewed_in_web_numbers_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
 
 # Подстроки, которые необходимо удалить из адресов перед их сравнением.
 PARTS_TO_BE_REMOVED = [
-    'БУЛЬВАР', 'Б-Р',
-    ' ВН ',
+    ' Б ', 'БУЛЬВАР', 'Б-Р',
+    ' В ', ' ВН ',
     'ГОРОД ', ' Г ',
     ' Д ', 'ДОМ ',
-    ' КАБ ', 'КАБИНЕТ',
+    ' З ', ' ЗД ',
+    'ИМЕНИ ', ' ИМ ',
+    'КАБИНЕТ', ' К ', ' КАБ ',
     ' КОМ ', 'КОМНАТА ',
-    'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
+    'КОРПУС ',
+    ' М ', 'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
     ' НАБ ', 'НАБЕРЕЖНАЯ ',
     ' ОБЛ ', 'ОБЛАСТЬ',
-    ' ОФ ', 'ОФИС ',
-    ' П ', ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
+    ' О ', ' ОФ ', 'ОФИС ',
+    ' П ',
+    ' ПЕР ', 'ПЕРЕУЛОК',
+    ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
     'ПОСЕЛОК ГОРОДСКОГО ТИПА', 'ПОС ', 'ПГТ ',
     ' ПР-Д ', 'ПРОЕЗД ',
+    ' РП ', 'РАБОЧИЙ ПОСЕЛОК',
     'РАЙОН', ' Р-Н ',
-    'РОССИЯ',
+    'РЕСПУБЛИКА', ' РЕСП ',
+    'РОССИЯ', 'РОССИЙСКАЯ ФЕДЕРАЦИЯ',
+    ' С ', ' СЕЛО ',
+    'СТ-ЦА', 'СТАНИЦА',
     ' СТР ', 'СТРОЕНИЕ ',
-    ' ТЕР ',
+    ' ТЕР ', 'ТЕРРИТОРИЯ',
     ' УЛ ', 'УЛИЦА ',
+    ' УЧ ',
+    ' Ч ', 'ЧАСТЬ',
     'ШОССЕ ', ' Ш ',
     ' ЭТ ', 'ЭТАЖ ',
 ]
@@ -839,7 +850,7 @@ def checking_data_in_iteration_through_browser(
     except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
             StaleElementReferenceException, MaxIterationException, NoSuchWindowException,
             KeyboardInterrupt) as e:
-        log_to_file_error(e)
+        log_to_file_error(e.msg)
         raise StopBrowserException
 
     finally:
