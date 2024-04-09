@@ -13,6 +13,7 @@ DataFrame сохраняет в файл './temp_df.xlsx'.
 который также считывается перед проверкой.
 
 """
+import json
 import os
 import time
 
@@ -53,6 +54,7 @@ PRODUCT_INPUT = r'.\screenshots\product_input_number.png'
 DECLARATION_CARD = r'.\screenshots\declaration_card.png'  # Карточка товара.
 REG_NUMBER_FIELD = r'.\screenshots\reg_numb.png'
 MANUFACTURER_FIELD = r'.\screenshots\manufacturer_field.png'
+DATE_OF_END = r'.\screenshots\date_of_end.png'
 
 # Скриншоты для выбора действующих деклараций.
 GREEN_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_green.png'
@@ -92,6 +94,7 @@ VIEWED_GOLD_PRODUCTS = r'.\%s\viewed_products_in_gold_%s.txt' % (DIR_CURRENT_MON
 
 FILE_FOR_TWO_COLUMNS = r'.\%s\two_columns_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
 FILE_GOLD = r'.\%s\gold_data_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
+APPLICANTS_CODES_AND_NAME = 'dict_applicant.json'
 
 # Процессы для поиска в Windows.
 FIREFOX_PROC = "firefox.exe"
@@ -295,6 +298,12 @@ def return_existing_xlsx_or_create_new(temp_df: str) -> str:
     return temp_file
 
 
+def read_dict_from_json_file(json_file: str = APPLICANTS_CODES_AND_NAME) -> dict:
+    with open (json_file, 'r') as file:
+        applicants_codes_and_names = json.load(file)
+        return applicants_codes_and_names
+
+
 ##################################################################################
 # Конкретные функции для работы с товарами и декларациями.
 ##################################################################################
@@ -334,7 +343,7 @@ def search_coords_of_all_declarations_on_page_in_gold() -> list | None:
     return list(centers)  # Преобразуем на выходе в список, для дальнейшей итерации по нему.
 
 
-def get_data_about_one_doc_in_gold() -> dict:
+def get_data_about_one_doc_in_gold(applicants_codes_and_name: dict) -> dict:
     """
     Непосредственное сохранение данных по одной декларации.
     Сохранить номер Документа(декларации) и наименование изготовителя в словарь.
@@ -343,13 +352,16 @@ def get_data_about_one_doc_in_gold() -> dict:
     # Проверяем, что провалились в декларацию.
     wait_and_click_screenshot(DECLARATION_CARD)
     # Поля, из которых нужно собрать данные.
-    needed_fields = (REG_NUMBER_FIELD, MANUFACTURER_FIELD)
+    needed_fields = (REG_NUMBER_FIELD, APPLICANT_CODE, MANUFACTURER_FIELD, DATE_OF_END)
 
     for field in needed_fields:
         wait_and_click_screenshot(field)  # Ищем скриншот нужного поля.
         x, y = pyautogui.position()
-        pyautogui.click(x + 120, y)  # Смещаемся в поле для ввода
-        pyautogui.doubleClick()
+        pyautogui.click(x + 100, y)  # Смещаемся в поле для ввода
+        if field == APPLICANT_CODE:
+            pass
+        else:
+            pyautogui.doubleClick()
         pyautogui.hotkey('Alt', 'a')  # Выделяем текст
         pyperclip.copy("")
         pyautogui.hotkey('Ctrl', 'c')  # Копируем текст из поля.
@@ -364,6 +376,12 @@ def get_data_about_one_doc_in_gold() -> dict:
             data['Изготовитель'] = '-'
         elif field_value and field == MANUFACTURER_FIELD:
             data['Изготовитель'] = field_value
+
+        elif field_value and field == DATE_OF_END:
+            data['Дата окончания'] = field_value.replace('/', '.')
+
+        elif field == APPLICANT_CODE:
+            data['Заявитель'] = applicants_codes_and_name[field_value]
 
     return data
 
@@ -393,7 +411,10 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
             'Код товара',
             'Наименование товара',
             'ДОС',
-            'Изготовитель', ])
+            'Дата окончания',
+            'Изготовитель',
+            'Заявитель'
+        ])
     else:  # Если нет, то читаем существующий
         new_df = pd.read_excel(gold_df)
 
@@ -421,11 +442,12 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
 
                 # Если в ГОЛД было серое сообщение об отсутствии данных, то записываем в Series и пропускаем итерацию.
                 if error_no_data:
-                    new_ser = pd.Series(['Нет данных в GOLD', 'Нет данных в GOLD'], index=['ДОС', 'Изготовитель'])
+                    new_ser = pd.Series(['Нет данных в GOLD'], index=['ДОС'])
                     new_row = row._append(new_ser)  # Добавляем в DataFrame.
                     new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
                     continue
 
+                applicants_codes_and_names = read_dict_from_json_file()
                 # Если сообщения не было, то ищем центры.
                 # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
                 for _ in range(5):
@@ -435,11 +457,14 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
                         item = 0  # Переменная для итерации по списку центров.
                         while item < len(centres):
                             pyautogui.doubleClick(centres[item])
-                            data_from_gold = get_data_about_one_doc_in_gold()
+                            data_from_gold = get_data_about_one_doc_in_gold(applicants_codes_and_names)
                             new_ser = pd.Series([data_from_gold['ДОС'],
-                                                 data_from_gold['Изготовитель']],
-                                                index=data_from_gold.keys())
-                            # Новый Series на 4 колонки с ДОС и изготовителем добавляем в новый DF.
+                                                 data_from_gold['Дата окончания'],
+                                                 data_from_gold['Изготовитель'],
+                                                 data_from_gold['Заявитель'],
+                                                 ],
+                                                index=['ДОС', 'Дата окончания', 'Изготовитель', 'Заявитель',])
+                            # Новый Series добавляем в новый DF.
                             new_row = row._append(new_ser)
                             new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
 
