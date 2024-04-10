@@ -72,6 +72,7 @@ def get_all_applicant_and_codes_from_gold():
     try:
         # Берем через цикл с ГОЛД данные о поставщиках и помещаем их в словарь.
         while row_applicant != prev_applicant:
+            time.sleep(0.2)
             prev_applicant = row_applicant
             # Копируем текст из поля.
             pyautogui.hotkey('Ctrl', 'c')
@@ -80,9 +81,9 @@ def get_all_applicant_and_codes_from_gold():
             applicant_dict[list_from_row[0]] = list_from_row[1]
             time.sleep(0.2)
             pyperclip.copy("")
-            time.sleep(0.2)
             # Переход к следующей позиции в списке поставщиков.
             pyautogui.hotkey('down')
+            time.sleep(0.2)
 
     except Exception:
         print('Произошла ошибка в обработке поставщиков.', Exception)

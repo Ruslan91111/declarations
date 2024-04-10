@@ -119,7 +119,7 @@ def automatic_launch_program():
         gold = pd.read_excel(FILE_GOLD)
 
         if len(gold) == 0:
-            launch_gold_module(50, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+            launch_gold_module(500, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
             log_to_file_info("Начата проверка в ГОЛД.")
 
         elif two_columns['Порядковый номер АМ'].iloc[-1] != gold['Порядковый номер АМ'].iloc[-1]:
@@ -129,7 +129,7 @@ def automatic_launch_program():
                              f"Последний номер продукта в файле {FILE_GOLD} - "
                              f"{gold['Порядковый номер АМ'].iloc[-1]}")
             log_to_file_info("Продолжается проверка в ГОЛД.")
-            launch_gold_module(50, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+            launch_gold_module(500, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
 
     # Проверяем существует ли файл с результатами.
     # Если файла с результатами нет, то создаем его и запускаем проверку в вебе.

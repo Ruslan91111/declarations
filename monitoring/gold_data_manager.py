@@ -16,6 +16,7 @@ DataFrame сохраняет в файл './temp_df.xlsx'.
 import json
 import os
 import time
+import subprocess
 
 import cv2
 import numpy as np
@@ -66,6 +67,8 @@ LOADING_PRODUCT = r'.\screenshots\loading_product.png'
 DATA_NOT_FOUND = r'.\screenshots\data_not_found.png'
 OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
 
+# Сообщение о крахе Java".
+CRASH_JAVA = r'.\screenshots\crash_java.png'
 
 ##################################################################################
 # Иные КОНСТАНТЫ
@@ -94,7 +97,7 @@ VIEWED_GOLD_PRODUCTS = r'.\%s\viewed_products_in_gold_%s.txt' % (DIR_CURRENT_MON
 
 FILE_FOR_TWO_COLUMNS = r'.\%s\two_columns_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
 FILE_GOLD = r'.\%s\gold_data_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-APPLICANTS_CODES_AND_NAME = 'dict_applicant.json'
+APPLICANTS_CODES_AND_NAME = r'dict_applicant.json'
 
 # Процессы для поиска в Windows.
 FIREFOX_PROC = "firefox.exe"
@@ -160,6 +163,23 @@ def waiting_disappear_screenshot(screenshot: str, timeout: int = 10) -> None:
                 pass
         except pyautogui.ImageNotFoundException:
             return None
+
+
+def check_crash_java(timeout: int = 1) -> None:
+    """ Проверка на наличие сообщение о крахе Java """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            time.sleep(0.1)
+            image = pyautogui.locateOnScreen(CRASH_JAVA, confidence=.7)
+            # Если сообщение о крахе Java, то закрываем браузер.
+            if image:
+                # Команда для завершения процессов браузера Firefox.
+                command = "taskkill /F /IM firefox.exe"
+                # Выполнение команды
+                subprocess.run(command, shell=True)
+        finally:
+            pass
 
 
 def input_in_gold_by_screenshot(screenshot: str, string_for_input: str, x_offset: int) -> None:
@@ -248,6 +268,7 @@ def activate_current_gold_or_launch_new_gold() -> None:
         try:
             wait_and_click_screenshot(MENU_33_4)
         except ScreenshotNotFoundException:
+            check_crash_java()
             wait_and_click_screenshot(MENU_33)
             wait_and_click_screenshot(MENU_33_4)
 
@@ -299,7 +320,7 @@ def return_existing_xlsx_or_create_new(temp_df: str) -> str:
 
 
 def read_dict_from_json_file(json_file: str = APPLICANTS_CODES_AND_NAME) -> dict:
-    with open (json_file, 'r') as file:
+    with open(json_file, 'r') as file:
         applicants_codes_and_names = json.load(file)
         return applicants_codes_and_names
 
@@ -381,7 +402,11 @@ def get_data_about_one_doc_in_gold(applicants_codes_and_name: dict) -> dict:
             data['Дата окончания'] = field_value.replace('/', '.')
 
         elif field == APPLICANT_CODE:
-            data['Заявитель'] = applicants_codes_and_name[field_value]
+            try:
+                applicant_name = applicants_codes_and_name[field_value]
+                data['Заявитель'] = applicant_name
+            except KeyError:
+                data['Заявитель'] = 'Нет в JSON'
 
     return data
 
