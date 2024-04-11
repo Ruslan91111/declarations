@@ -229,6 +229,7 @@ def activate_current_java(proc) -> bool | None:
 
 def launch_firefox_for_gold_from_desktop() -> None:
     """Найти на рабочем столе иконку firefox и открыть ее."""
+    # Переключить на английскую раскладку
     time.sleep(1)
     pyautogui.hotkey('Win', 'd')  # Свернуть все окна.
     wait_and_click_screenshot(FIREFOX_ICON)  # Открыть ГОЛД через иконку на раб.столе.
@@ -404,9 +405,9 @@ def get_data_about_one_doc_in_gold(applicants_codes_and_name: dict) -> dict:
         elif field == APPLICANT_CODE:
             try:
                 applicant_name = applicants_codes_and_name[field_value]
-                data['Заявитель'] = applicant_name
+                data['Заявитель ГОЛД'] = applicant_name
             except KeyError:
-                data['Заявитель'] = 'Нет в JSON'
+                data['Заявитель ГОЛД'] = 'Нет в JSON'
 
     return data
 
@@ -438,7 +439,7 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
             'ДОС',
             'Дата окончания',
             'Изготовитель',
-            'Заявитель'
+            'Заявитель ГОЛД'
         ])
     else:  # Если нет, то читаем существующий
         new_df = pd.read_excel(gold_df)
@@ -450,6 +451,11 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
     try:
         # Перебираем построчно данные из excel.
         for _, row in old_df[last_viewed_number:].iterrows():
+            if row.name % 300 == 0:
+                copy_xlsx_file = r'./%s/copies_of_gold/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, row.name)
+                total_df = pd.concat([old_df, new_df])
+                total_df.to_excel(copy_xlsx_file, index=False)
+
             # Читаем код товара из файла.
             product_number = row.loc['Код товара']
 
@@ -486,9 +492,9 @@ def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
                             new_ser = pd.Series([data_from_gold['ДОС'],
                                                  data_from_gold['Дата окончания'],
                                                  data_from_gold['Изготовитель'],
-                                                 data_from_gold['Заявитель'],
+                                                 data_from_gold['Заявитель ГОЛД'],
                                                  ],
-                                                index=['ДОС', 'Дата окончания', 'Изготовитель', 'Заявитель',])
+                                                index=['ДОС', 'Дата окончания', 'Изготовитель', 'Заявитель ГОЛД',])
                             # Новый Series добавляем в новый DF.
                             new_row = row._append(new_ser)
                             new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame

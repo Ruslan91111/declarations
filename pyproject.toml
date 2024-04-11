@@ -27,6 +27,7 @@ psutil = "^5.9.8"
 pygetwindow = "^0.0.9"
 fake-useragent = "^1.5.1"
 logging = "^0.4.9.6"
+py-win-keyboard-layout = "^0.2"
 
 
 [build-system]
