@@ -878,7 +878,7 @@ def checking_data_in_iteration_through_browser(
         # Через цикл перебираем строки в ГОЛД файле.
         for _, row in gold_df.iloc[last_row_name_from_gold:].iterrows():
 
-            if row.name % 10 == 0:
+            if row.name % 500 == 0:
                 copy_xlsx_file = r'./%s/copies_of_web/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, row.name)
                 total_df = pd.concat([old_df, new_df])
                 with pd.ExcelWriter(copy_xlsx_file, engine="openpyxl", mode='w') as writer:
