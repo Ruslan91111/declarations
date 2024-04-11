@@ -27,9 +27,11 @@ import sys
 import time
 from datetime import datetime
 import re
+from enum import Enum
 from types import NoneType
 
 import pandas as pd
+import pyautogui
 from fake_useragent import UserAgent
 
 from selenium import webdriver
@@ -55,11 +57,12 @@ from logger_config import log_to_file_info, log_to_file_error
 URL_FSA_DECLARATION = "https://pub.fsa.gov.ru/rds/declaration"
 URL_FSA_CERTIFICATE = "https://pub.fsa.gov.ru/rss/certificate"
 URL_EGRUL = "https://egrul.nalog.ru/"
+URL_RUSPROFILE = "https://www.rusprofile.ru/"
 URL_GOST = "https://etr-torgi.ru/calc/check_gost/"
 date_today = datetime.now().strftime('%Y-%m-%d')
 URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
 
-PATH_TO_DRIVER = r'..\.\chromedriver.exe'
+PATH_TO_DRIVER = r'.\chromedriver.exe'
 
 # Файлы
 VIEWED_IN_FSA_NUMBERS = r'.\%s\viewed_in_web_numbers_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
@@ -107,7 +110,7 @@ X_PATHS = {
     'fsa_chapter': '//fgis-links-list/div/ul/li',
     'fsa_input_field': "//fgis-text/input",
     'fsa_search_button': "//button[contains(text(), 'Найти')]",
-    'fsa_pick_document': "/*//tbody/tr[2]/td[3]",
+    'fsa_pick_document': "/*//tbody/tr[{row}]/td[{column}]",
     # 'fsa_pick_document': "//*/fgis-h-table-limited-text-cell/div[1]",
     'fsa_return_declaration': "//fgis-rds-view-declaration-toolbar/div/div[1]",
     'fsa_return_certificate': "//fgis-rss-view-certificate-toolbar/div/div[1]",
@@ -130,6 +133,15 @@ X_PATHS = {
     'egrul_input': '//*[@id="query"]',
     'search_button_egrul': '//*[@id="btnSearch"]',
     'egrul_captcha': '//*[@id="frmCaptcha"]',
+
+    # РУСПРОФАЙЛ
+    'rusprofile_first_input': '//*[@id="indexsearchform"]/div/input',
+    'rusprofile_first_search_button': '//*[@id="indexsearchform"]/button/span',
+
+    'rusprofile_input': '//*[@id="searchform"]/input[1]',
+    'rusprofile_search_button': '//*[@id="searchform"]/button[2]',
+    'rusprofile_address_place': '//*[@id="anketa"]/div[2]/div[1]/div[2]',
+    # 'rusprofile_address_place': '//*[@id="anketa"]/div[2]/div[1]/div[2]/address',
 
     # ГОСТ
     'gost_input_field': '//*[@id="poisk-form"]/input',
@@ -179,8 +191,10 @@ COLUMNS_FOR_FINAL_DF = [
     'Код товара',
     'Наименование товара',
     'ДОС',
+    'Дата окончания',
     'Изготовитель',
-    'Поставщик',
+    'Заявитель ГОЛД',
+    'Поставщик из интернет-ресурса',
     'Дата проверки',
     'Наличие ДОС',
     'Соответствие с сайтом',
@@ -224,8 +238,8 @@ def add_to_data_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dic
             pass
 
         # Если ранее ОГРН не проверялся. Пытаемся найти и сохранить адрес с сайта ЕГРЮЛ.
-        browser_.switch_to.window(tabs['egrul'])
-        data = get_address_from_egrul(data, org, browser_, wait_)
+        browser_.switch_to.window(tabs['rusprofile'])
+        data = get_address_from_rusprofile(data, org, browser_, wait_)
 
         # Записываем в словарь результат сравнения.
         try:
@@ -273,6 +287,51 @@ def get_address_from_egrul(data_web: dict, org: str, browser_, wait_) -> dict:
 
         except TimeoutException:
             raise EgrulCaptchaException
+
+    else:  # Если ОГРН у юр.лица нет.
+        data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
+
+    return data_web
+
+
+class ElementsOfAddress(Enum):
+    postal_code: str = 'span[itemprop="postalCode"]'
+    region: str = 'span[itemprop="addressRegion"]'
+    locality: str = 'span[itemprop="addressLocality"]'
+    street: str = 'span[itemprop="streetAddress"]'
+
+
+def get_address_from_rusprofile(data_web: dict, org: str, browser_, wait_) -> dict:
+    """
+    Взять адрес с сайта https://www.rusprofile.ru/ по ОГРН. Если ОГРН нет, то так и записать.
+
+    : param data_web: словарь с данными о документе, полученными с сайта, в том числе юр.лицах,
+    : param org: строковое обозначение типа организации заявитель или изготовитель,
+    """
+    # Проверяем есть ли ОГРН у юр.лица.
+    if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != '-' and data_web[f'ОГРН {org}'] != 'Нет ОГРН':  # Если есть ОГРН
+        time.sleep(random.randint(1, 3))
+        try:
+            needed_element = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_input'])))
+            needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
+            # pyautogui.hotkey('enter')
+            search_button = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_search_button'])))
+            time.sleep(random.randint(1, 3))
+            search_button.click()
+            # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
+            address = ''
+            for i in ElementsOfAddress:
+                try:
+                    element = wait_.until(EC.element_to_be_clickable((By.CSS_SELECTOR, i.value)))
+                    address += (element.text + ' ')
+                except:
+                    pass
+            print(address)
+            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = address
+
+        except TimeoutException:
+            raise Exception('Проблема в руспрофайле')
+
 
     else:  # Если ОГРН у юр.лица нет.
         data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
@@ -518,12 +577,29 @@ def make_new_tab(browser_, url: str):
     return browser_.current_window_handle
 
 
-def make_all_required_tabs(browser_) -> dict:
+def make_new_tab_rusprofile(browser_, wait_, url: str):
+    """Открыть новое окно в браузере с определенным
+    сайтом и вернуть указатель на него."""
+    browser_.switch_to.new_window('tab')
+    browser_.get(url)
+    time.sleep(random.randint(1, 3))
+    time.sleep(10)
+    needed_element = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_first_input'])))
+    needed_element.send_keys('1153316153715')  # Ввести ОГРН
+    # pyautogui.hotkey('enter')
+    search_button = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_first_search_button'])))
+    search_button.click()
+
+    return browser_.current_window_handle
+
+
+def make_all_required_tabs(browser_, wait_) -> dict:
     """Создать все 5 необходимых вкладок в браузере."""
     tabs = {
         'declaration': make_new_tab(browser_, URL_FSA_DECLARATION),
         'certificate': make_new_tab(browser_, URL_FSA_CERTIFICATE),  # Сертификаты.
-        'egrul': make_new_tab(browser_, URL_EGRUL),  # ЕГРЮЛ
+        # 'egrul': make_new_tab(browser_, URL_EGRUL),  # ЕГРЮЛ
+        'rusprofile': make_new_tab_rusprofile(browser_, wait_, URL_RUSPROFILE),  # ГОСТ
         'gost': make_new_tab(browser_, URL_GOST),  # ГОСТ
         'nsi': make_new_tab(browser_, URL_NSI),  # СГР
     }
@@ -547,10 +623,11 @@ def define_type_of_doc(number: str) -> str | None:
     """Проверить номер декларации из xlsx файла и определить какой тип документа."""
     pattern_declaration1 = r'(ЕАЭС N RU Д-[\w\.]+)'
     pattern_declaration2 = r'(РОСС RU Д-[\w\.]+)'
+    pattern_declaration3 = r'(ТС N RU Д-[\w\.]+)'
     pattern_certificate = r'(ЕАЭС RU С-[\w\.]+)'
     pattern_nsi = r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}'
 
-    if re.match(pattern_declaration1, number) or re.match(pattern_declaration2, number):
+    if re.match(pattern_declaration1, number) or re.match(pattern_declaration2, number) or re.match(pattern_declaration3, number):
         return 'declaration'
     if re.match(pattern_certificate, number):
         return 'certificate'
@@ -571,7 +648,7 @@ def make_series_for_result(data: dict) -> pd.Series:
         else:
             list_for_series.append('-')
 
-    series = pd.Series(list_for_series, index=COLUMNS_FOR_FINAL_DF[5:])
+    series = pd.Series(list_for_series, index=COLUMNS_FOR_FINAL_DF[7:])
 
     return series
 
@@ -613,21 +690,28 @@ class FSAScrapper:
         request_time = time.time()
         return request_time
 
-    def pick_needed_document_in_list(self, document_number: str):
+    def pick_needed_document_in_list(self, document_number: str, expiration_date: str):
         """Обновить браузер, дождаться список документов,
         кликнуть по нужному документу в списке."""
+
+        document_number = document_number.strip()
+        expiration_date = expiration_date[:6] + '20' + expiration_date[6:]
+        self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, X_PATHS['fsa_pick_document'].format(row=1, column=3))))
+
         try:
-            document_number = document_number.strip()
-            needed_document_element = self.wait.until(EC.element_to_be_clickable(
-                (By.XPATH, X_PATHS['fsa_pick_document'])))  # Элемент для клика.
-            start_time = time.time()
-            while needed_document_element.text.strip() != document_number:
-                if time.time() - start_time >= 30:
-                    return False
-                needed_document_element = self.wait.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['fsa_pick_document'])))
-            needed_document_element.click()
-            return True
+            i = 2
+            while True:
+                doc_number_fsa = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, X_PATHS['fsa_pick_document'].format(row=i, column=3))))
+                doc_number_fsa_text = doc_number_fsa.text.strip()
+                expiration_date_fsa = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, X_PATHS['fsa_pick_document'].format(row=i, column=4))))
+                expiration_date_fsa = expiration_date_fsa.text.strip()
+                if doc_number_fsa_text == document_number and expiration_date_fsa == expiration_date:
+                    doc_number_fsa.click()
+                    return True
+                i += 1
 
         except TimeoutException:
             return False
@@ -727,7 +811,7 @@ class FSAScrapper:
             data.update(inner_data)
         return data
 
-    def get_data_from_fsa(self, doc_number, type_of_doc, tabs):
+    def get_data_from_fsa(self, doc_number, expiration_date, type_of_doc, tabs):
         """Общий метод диспетчер для деклараций и сертификатов."""
         # Переключаемся на соответсвующее окно в соответствии от типа документа.
         if type_of_doc == 'declaration':
@@ -740,7 +824,7 @@ class FSAScrapper:
         time.sleep(random.randint(1, 3))
 
         # Выбираем нужный документ.
-        picked = self.pick_needed_document_in_list(doc_number)
+        picked = self.pick_needed_document_in_list(doc_number, expiration_date)
         if picked is True:
             data = self.get_data_on_document(type_of_doc)  # Данные ФСА.
             return data, request_time
@@ -786,7 +870,7 @@ def checking_data_in_iteration_through_browser(
         last_row_name_from_gold = 0
 
     # Создаем в браузере 5 вкладок для попеременной работы с сайтами.
-    tabs = make_all_required_tabs(browser_)  # Словарь вкладок
+    tabs = make_all_required_tabs(browser_, wait_)  # Словарь вкладок
     times = 0  # Количество обращений к сайту ФСА.
     request_time = 0  # Прошедшее с последнего запроса к сайту ФСА время.
 
@@ -807,6 +891,7 @@ def checking_data_in_iteration_through_browser(
 
             data = {}
             doc_number = row['ДОС']  # Номер документа из DataFrame из ГОЛД
+            expiration_date = row['Дата окончания']
             # Прогоняем через паттерны, определяем тип документа.
             type_of_doc = define_type_of_doc(doc_number)
 
@@ -826,7 +911,7 @@ def checking_data_in_iteration_through_browser(
                     time.sleep(15 - time_from_last_request)
                 # Собираем данные по декларации с сайта ФСА.
                 fsa_scrapper = FSAScrapper(browser_, wait_)
-                data, request_time = fsa_scrapper.get_data_from_fsa(doc_number, type_of_doc, tabs)
+                data, request_time = fsa_scrapper.get_data_from_fsa(doc_number, expiration_date, type_of_doc, tabs)
                 times += 1  # Увеличиваем счетчик обращения к сайту ФСА
 
             # Если статус документа 'рабочий'(действующий),
@@ -882,7 +967,7 @@ def launch_checking(range_: int, input_file: str, output_file: str):
             if i % 2 == 0:
                 options.add_argument(f'--proxy-server={PROXY}')
 
-            # options.add_argument('--headless')
+            options.add_argument('--headless')
             # Фейковый данные user agent
             ua = UserAgent()
             user_agent = ua.random

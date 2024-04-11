@@ -4,6 +4,7 @@ import shutil
 import sys
 
 import pandas as pd
+import py_win_keyboard_layout
 
 from exceptions import PathNotPass, FileNotExisting
 from gold_data_manager import launch_gold_module, DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR, FILE_FOR_TWO_COLUMNS, \
@@ -162,4 +163,5 @@ def automatic_launch_program():
 
 
 if __name__ == '__main__':
+    py_win_keyboard_layout.change_foreground_window_keyboard_layout(0x04090409)
     automatic_launch_program()
