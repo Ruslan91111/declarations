@@ -7,8 +7,8 @@ import pandas as pd
 import py_win_keyboard_layout
 
 from exceptions import PathNotPass, FileNotExisting
-from gold_data_manager import launch_gold_module, DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR, FILE_FOR_TWO_COLUMNS, \
-    FILE_GOLD
+from gold_data_manager import launch_gold_module
+from monitoring.constants import Files, PATH_TO_DESKTOP
 from monitoring_in_web import launch_checking
 from logger_config import log_to_file_info
 
@@ -24,20 +24,12 @@ MESSAGE_FOR_USER_VERIFIABLE_FILE = (
 
 
 ##################################################################################
-# Пути к файлам.
-##################################################################################
-FILE_RESULT = r'.\%s\result_data_after_web_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-PATH_TO_DESKTOP = "c:\\Users\\impersonal\\Desktop\\"
-
-
-##################################################################################
 # Функции для взаимодействия с пользователем.
 ##################################################################################
 def get_path_for_existing_file(message_for_user: str) -> str:
     """Получить путь от пользователя к существующему файлу."""
     path_from_user = input(message_for_user)
     path_from_user = PATH_TO_DESKTOP + path_from_user + '.xlsx'
-
     # Если путь указан неверно.
     if not path_from_user:
         raise PathNotPass
@@ -52,7 +44,7 @@ def get_path_for_existing_file(message_for_user: str) -> str:
 # Функция формирующая колонки в файле с результатами.
 ##################################################################################
 def create_sheet_write_codes_and_names(file_for_checking: str,
-                                       file_of_results: str = FILE_FOR_TWO_COLUMNS):
+                                       file_of_results: str = Files.TWO_COLUMNS.value):
     """
     Читает изначальный файл для мониторинга, берет из него две колонки:
     наименование и код товара, создает xlsx файл, в котором сохраняет данные два столбца:
@@ -103,52 +95,52 @@ def automatic_launch_program():
     checking_file = get_path_for_existing_file(MESSAGE_FOR_USER_VERIFIABLE_FILE)
 
     # Проверяем существует ли файл с двумя колонками, если нет, то создаем такой файл.
-    if not os.path.isfile(FILE_FOR_TWO_COLUMNS):
+    if not os.path.isfile(Files.TWO_COLUMNS.value):
         create_sheet_write_codes_and_names(checking_file)
-        log_to_file_info("Создан файл %s" % FILE_FOR_TWO_COLUMNS)
+        log_to_file_info("Создан файл %s" % Files.TWO_COLUMNS.value)
     else:
-        log_to_file_info("Файл %s уже существует." % FILE_FOR_TWO_COLUMNS)
+        log_to_file_info("Файл %s уже существует." % Files.TWO_COLUMNS.value)
 
     # Проверяем существует ли файл ГОЛД, если нет, то создаем и начинаем наполнять данными.
-    if not os.path.isfile(FILE_GOLD):
-        launch_gold_module(30, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+    if not os.path.isfile(Files.GOLD.value):
+        launch_gold_module(30, Files.TWO_COLUMNS.value, Files.GOLD.value)
 
     # Если файл ГОЛД есть, но в нем не все строки, то продолжаем наполнять данными из ГОЛД.
     else:
-        log_to_file_info("Файл %s уже существует." % FILE_GOLD)
-        two_columns = pd.read_excel(FILE_FOR_TWO_COLUMNS)
-        gold = pd.read_excel(FILE_GOLD)
+        log_to_file_info("Файл %s уже существует." % Files.GOLD.value)
+        two_columns = pd.read_excel(Files.TWO_COLUMNS.value)
+        gold = pd.read_excel(Files.GOLD.value)
 
         if len(gold) == 0:
-            launch_gold_module(500, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+            launch_gold_module(500, Files.TWO_COLUMNS.value, Files.GOLD.value)
             log_to_file_info("Начата проверка в ГОЛД.")
 
         elif two_columns['Порядковый номер АМ'].iloc[-1] != gold['Порядковый номер АМ'].iloc[-1]:
             log_to_file_info(f"Не все строки проверены в GOLD. "
-                             f"Последний номер продукта в файле {FILE_FOR_TWO_COLUMNS} - "
+                             f"Последний номер продукта в файле {Files.TWO_COLUMNS.value} - "
                              f"{two_columns['Порядковый номер АМ'].iloc[-1]}. \n "
-                             f"Последний номер продукта в файле {FILE_GOLD} - "
+                             f"Последний номер продукта в файле {Files.GOLD.value} - "
                              f"{gold['Порядковый номер АМ'].iloc[-1]}")
             log_to_file_info("Продолжается проверка в ГОЛД.")
-            launch_gold_module(500, FILE_FOR_TWO_COLUMNS, FILE_GOLD)
+            launch_gold_module(500, Files.TWO_COLUMNS.value, Files.GOLD.value)
 
     # Проверяем существует ли файл с результатами.
     # Если файла с результатами нет, то создаем его и запускаем проверку в вебе.
-    if not os.path.isfile(FILE_RESULT):
-        launch_checking(500, FILE_GOLD, FILE_RESULT)
+    if not os.path.isfile(Files.RESULT_FILE.value):
+        launch_checking(500, Files.GOLD.value, Files.RESULT_FILE.value)
     # Если файл с результатами есть, но в нем не все строки, то продолжаем наполнять данными.
     else:
-        log_to_file_info("Файл %s уже существует." % FILE_RESULT)
-        result = pd.read_excel(FILE_RESULT)
-        gold = pd.read_excel(FILE_GOLD)
+        log_to_file_info("Файл %s уже существует." % Files.RESULT_FILE.value)
+        result = pd.read_excel(Files.RESULT_FILE.value)
+        gold = pd.read_excel(Files.GOLD.value)
 
         # Проверяем совпадает ли по количеству строк файлы результатов и голд-данных.
         if len(result) < len(gold):
             log_to_file_info(f"Не все строки проверены после на интернет-ресурсах после GOLD. "
-                             f"Длина файла {FILE_RESULT} - {len(result)} строк. \n "
-                             f"Длина файла {FILE_GOLD} - {len(gold)} строк. ")
+                             f"Длина файла {Files.RESULT_FILE.value} - {len(result)} строк. \n "
+                             f"Длина файла {Files.GOLD.value} - {len(gold)} строк. ")
             log_to_file_info("Продолжается проверка на интернет-ресурсах.")
-            launch_checking(500, FILE_GOLD, FILE_RESULT)
+            launch_checking(500, Files.GOLD.value, Files.RESULT_FILE.value)
 
         # Если в интернете проверены все строки, полученные из ГОЛД.
         else:
@@ -156,7 +148,7 @@ def automatic_launch_program():
             # Готовый результат копируем на рабочий стол.
             destination_file = os.path.join(
                 PATH_TO_DESKTOP, os.path.basename('Результат проверки мониторинга.xlsx'))
-            shutil.copyfile(FILE_RESULT, destination_file)
+            shutil.copyfile(Files.RESULT_FILE.value, destination_file)
             log_to_file_info(f'Файл скопирован на рабочий стол: {destination_file}')
             print(f'Проверка полностью завершена. \nФайл скопирован на рабочий стол: {destination_file}')
             sys.exit()

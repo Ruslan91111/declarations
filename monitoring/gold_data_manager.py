@@ -1,548 +1,425 @@
-"""Модуль для работы с GOLD.
-
-Запускает ГОЛД, либо активируя работающий процесс, либо запуская сначала
-от иконки на рабочем столе. Проходит по всему меню ГОЛД до ввода кода товара,
-ставит галочку на 'скрыть просроченные'. Считывает номера кодов товаров и
-их наименования из существующего xlsx файла, вводит коды
-товаров поочередно в ГОЛД, кликает по каждому действующему документу,
-сохраняет из выбранной карточки документа: наименование изготовителя
-и номер декларации или иного документа.
-Добавляет тип документа, номер документа и изготовителя в DataFrame.
-DataFrame сохраняет в файл './temp_df.xlsx'.
-Номера просмотренных кодов товаров сохраняются в файл 'viewed_products_in_gold.txt',
-который также считывается перед проверкой.
-
 """
-import json
-import os
+Модуль для работы с GOLD.
+    class ScreenShotWorker: основная задача работа через pyautogui со скриншотами.
+
+    class GoldScreenShotWorker(ScreenShotWorker): - основная задача -
+        работа со скриншотами в окне программы GOLD.
+
+    class GoldLauncher(GoldScreenShotWorker): - Основная задача -
+        запуск и подготовка для дальнейшей работы программы GOLD
+
+    class ADocDataCollector(GoldScreenShotWorker): - сбор данных в ГОЛД на один документ.
+
+    class GoldCollector(ADocDataCollector, GoldLauncher): - сбор данных в ГОЛД на один документ,
+        идет построчно в файле two_columns и собирает по ним данные.
+
+    def launch_gold_module: запуск всего кода в модуле.
+"""
 import time
 import subprocess
-
 import cv2
 import numpy as np
-import openpyxl
 import pandas as pd
 import pyautogui
 import pytesseract
 import pyperclip
-import psutil
-from datetime import datetime
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
 from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
 from logger_config import log_to_file_info
+from monitoring.constants import (PATH_TO_TESSERACT, ScreenShotsForWorkWithGold as ScreenShots,
+                                  FIREFOX_PROC, JAVA_PROC, FieldsInProductCardGold,
+                                  Files, COLUMNS_FOR_GOLD_DF, DIR_CURRENT_MONTHLY_MONITORING)
 
-##################################################################################
-# КОНСТАНТЫ - скриншоты
-##################################################################################
-# открыть ГОЛД и прокликать по меню.
-FIREFOX_ICON = r'.\screenshots\appicon3.png'
-FIREFOX_ICON_PANEL = r'.\screenshots\firefox_icon_panel.png'
-MENU_ICON = r'.\screenshots\menu_icon.png'
-GOLD_LOADED = r'.\screenshots\gold_loaded.png'
-BACK_ICON_GOLD = r'.\screenshots\back_icon_gold.png'
-STOCK_11 = r'.\screenshots\gold_11.png'
-LOGIN_PLACE = r'.\screenshots\login_place.png'
-PASSWORD_PLACE = r'.\screenshots\password_place.png'
-LOGIN = r'.\screenshots\enter.png'
-MENU_33 = r'.\screenshots\menu_33.png'
-MENU_33_4 = r'.\screenshots\33-4.png'
-TO_SEAL_OVERDUE = r'.\screenshots\seal_overdue.png'
-APPLICANT_CODE = r'.\screenshots\applicant_code.png'
+from monitoring.functions_for_work_with_files_and_dirs import (
+    write_last_viewed_number_to_file, read_last_viewed_number_from_file,
+    return_or_create_xlsx_file, read_and_return_dict_from_json_file,
+    check_process_in_os, return_or_create_dir)
 
-# Для работы с конкретными карточками деклараций.
-PRODUCT_INPUT = r'.\screenshots\product_input_number.png'
-DECLARATION_CARD = r'.\screenshots\declaration_card.png'  # Карточка товара.
-REG_NUMBER_FIELD = r'.\screenshots\reg_numb.png'
-MANUFACTURER_FIELD = r'.\screenshots\manufacturer_field.png'
-DATE_OF_END = r'.\screenshots\date_of_end.png'
-
-# Скриншоты для выбора действующих деклараций.
-GREEN_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_green.png'
-GRAY_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_transp.png'
-
-# Скриншот загрузки данных
-LOADING_PRODUCT = r'.\screenshots\loading_product.png'
-# Серое сообщение "Данные не найдены".
-DATA_NOT_FOUND = r'.\screenshots\data_not_found.png'
-OK_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
-
-# Сообщение о крахе Java".
-CRASH_JAVA = r'.\screenshots\crash_java.png'
-
-##################################################################################
-# Иные КОНСТАНТЫ
-##################################################################################
-# Файлы
-
-def return_or_create_dir(path_to_dir: str):
-    """
-    Проверить существует ли переданная директория.
-    """
-    if not os.path.isdir(path_to_dir):
-        os.mkdir(path_to_dir)
-        log_to_file_info("Создана директория по пути %s" % path_to_dir)
-    else:
-        log_to_file_info("Директория %s уже существует." % path_to_dir)
-    return path_to_dir
-
-
-##################################################################################
-# Пути к файлам.
-##################################################################################
-MONTH_AND_YEAR = datetime.now().strftime('%B_%Y')  # Определяем месяц
-DIR_CURRENT_MONTH_AND_YEAR = return_or_create_dir(r'./monitoring_for_%s' % MONTH_AND_YEAR)
-
-VIEWED_GOLD_PRODUCTS = r'.\%s\viewed_products_in_gold_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-
-FILE_FOR_TWO_COLUMNS = r'.\%s\two_columns_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-FILE_GOLD = r'.\%s\gold_data_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-APPLICANTS_CODES_AND_NAME = r'dict_applicant.json'
-
-# Процессы для поиска в Windows.
-FIREFOX_PROC = "firefox.exe"
-JAVA_PROC = "java.exe"
 
 # Путь к файлам Tesseract OCR и poppler
-PATH_TO_TESSERACT = r'C:\Users\impersonal\AppData\Local\Programs\Tesseract-OCR\tesseract'
 pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
 path_to_poppler = r'.././poppler-23.11.0/Library/bin'
 
-STARS = '*' * 40
 
+class ScreenShotWorker:
+    """ Класс - основная задача работа через pyautogui со скриншотами."""
+    @staticmethod
+    def _locate_and_click(screenshot: str, confidence: float = 0.7) -> str | None:
+        """ Получает путь к скриншоту, ищет его на экране и кликает на него.
+        Используется как внутренняя функция. """
+        time.sleep(0.03)
+        screenshot = pyautogui.locateOnScreen(screenshot, confidence=confidence)
+        if screenshot:  # Если скриншот найден кликнуть по нему и вернуть его.
+            pyautogui.click(screenshot)
+            return screenshot
 
-##################################################################################
-# Функции работы со скриншотами.
-##################################################################################
-def wait_and_click_screenshot(image_path: str,
-                              timeout: int = 5,
-                              confidence: float = 0.7) -> str | None:
-    """ Ожидать появление скриншота в течение заданного времени.
-     При обнаружении кликнуть один раз."""
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            time.sleep(0.03)
-            image = pyautogui.locateOnScreen(image_path, confidence=confidence)
-            # Если скриншот найден кликнуть по нему и вернуть его.
-            if image:
-                pyautogui.click(image)
-                return image
-        except pyautogui.ImageNotFoundException:
-            pass
-    raise ScreenshotNotFoundException(image_path)
-
-
-def handle_error_no_data_in_web(timeout: int = 1) -> bool | None:
-    """ При сообщении об ошибке в виде: 'Отсутствия данных' нажать 'ОК'. """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            time.sleep(0.1)
-            image = pyautogui.locateOnScreen(DATA_NOT_FOUND, confidence=.7)
-            # Если найдено сообщение об ошибке, то ищем "ОК" и кликаем по нему.
-            if image:
-                ok = pyautogui.locateOnScreen(OK_DATA_NOT_FOUND, confidence=.7)
-                pyautogui.click(ok)
-                return True
-        except pyautogui.ImageNotFoundException:
-            pass
-    return None
-
-
-def waiting_disappear_screenshot(screenshot: str, timeout: int = 10) -> None:
-    """ Ждем пока скриншот исчезнет с экрана. """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            time.sleep(0.05)
-            # Ищем скриншот.
-            image = pyautogui.locateOnScreen(screenshot, confidence=0.7)
-            # Если найден, то продолжаем его находить.
-            if image:
+    def click_screenshot(self, screenshot: str, timeout: int = 5,
+                         confidence: float = 0.7) -> None | str:
+        """ Ожидать появление скриншота в течение заданного времени.
+        По появлении кликнуть по нему."""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                return self._locate_and_click(screenshot, confidence)
+            except pyautogui.ImageNotFoundException:
                 pass
-        except pyautogui.ImageNotFoundException:
-            return None
+        raise ScreenshotNotFoundException(screenshot)
+
+    def waiting_disappear_screenshot(self, screenshot: str, timeout: int = 10) -> None:
+        """ Ждем пока скриншот, мешающий работе исчезнет с экрана. """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                time.sleep(0.05)
+                screenshot = self._locate_and_click(screenshot)
+                if screenshot:  # Если найден, то продолжаем его находить.
+                    pass
+            except pyautogui.ImageNotFoundException:
+                return None
+
+    def input_in_field_with_offset(self, screenshot: str, string_for_input: str,
+                                   x_offset: int) -> None:
+        """Ввести строку в поле голда. Поиск по скриншоту, смещение по оси x"""
+        # Находим положение нужного скриншота(слова).
+        input_number = self.click_screenshot(screenshot)
+        pyautogui.moveTo(input_number)
+        x, y = pyautogui.position()
+        pyautogui.moveTo(x + x_offset, y)  # Смещаемся по оси x вправо, в поле для ввода.
+        pyautogui.doubleClick()
+        pyautogui.hotkey('ctrl', 'a')
+        pyautogui.press('backspace')  # Очистить поле
+        pyperclip.copy(string_for_input)
+        pyautogui.hotkey('ctrl', 'v')  # Вставить значение.
+
+    @staticmethod
+    def select_and_copy() -> str:
+        """Выделить весь текст, где стоит курсор, скопировать в буфер."""
+        pyautogui.hotkey('Alt', 'a')
+        pyperclip.copy("")
+        pyautogui.hotkey('Ctrl', 'c')
+        value = pyperclip.paste()
+        return value
+
+    def find_center_of_screenshot(self, screenshot: str):
+        """ Найти и вернуть координаты центра нужного скриншота по x и y. """
+        screenshot = self.click_screenshot(screenshot, timeout=1, confidence=0.6)
+        center_x = screenshot.left + screenshot.width // 2
+        center_y = screenshot.top + screenshot.height // 2
+        return center_x, center_y
+
+    @staticmethod
+    def make_screenshot_for_multiple_searches():
+        """ Сделать скриншот экрана, и подготовить его для поиска множества изображений. """
+        screenshot = pyautogui.screenshot()
+        screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+        screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+        return screenshot
+
+    def find_centers_of_copies_of_template(self, template: str) -> list:
+        """ Найти координаты центров всех копий шаблона. """
+        centers = []
+        template = cv2.imread(template, 0)  # Шаблон (скриншот который нужно найти).
+        template_weight, template_height = template.shape[::-1]
+        # Скрин экрана, на котором будем искать шаблон
+        screenshot_for_searches = self.make_screenshot_for_multiple_searches()
+        # Ищем шаблон на скриншоте экрана.
+        results_of_searches = cv2.matchTemplate(screenshot_for_searches,
+                                                template, cv2.TM_CCOEFF_NORMED)
+        threshold = 0.6  # Устанавливаем порог сходства.
+        locations = np.where(results_of_searches >= threshold)  # Координаты всех совпадений.
+
+        # Перебираем все совпадения и добавляем центра каждого из них в centers.
+        for point in zip(*locations[::-1]):
+            center_x = point[0] + template_weight // 2
+            center_y = point[1] + template_height // 2
+            centers.append((center_x, center_y))
+
+        return centers
 
 
-def check_crash_java(timeout: int = 1) -> None:
-    """ Проверка на наличие сообщение о крахе Java """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+class GoldScreenShotWorker(ScreenShotWorker):
+    """ Класс - основная задача - работа со скриншотами в окне программы GOLD. """
+
+    @staticmethod
+    def press_search_in_gold():
+        """ Нажать поиск после ввода номера продукта. """
+        pyautogui.hotkey('Alt', 't')
+
+    @staticmethod
+    def press_back_in_gold():
+        """ Нажать вернуться назад из карточки продукта. """
+        pyautogui.hotkey('Alt', 'b')
+
+    def handle_error_no_data_in_web(self, timeout: int = 2) -> bool | None:
+        """ При сообщении об ошибке в виде: 'Отсутствия данных' нажать 'ОК'. """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                image = self._locate_and_click(ScreenShots.MESSAGE_DATA_NOT_FOUND.value)
+                if image:  # Если найдено сообщение об ошибке, то ищем "ОК" и кликаем по нему.
+                    self._locate_and_click(ScreenShots.FOR_CLICK_OK_ON_DATA_NOT_FOUND.value)
+                    return True
+
+            except pyautogui.ImageNotFoundException:
+                pass
+
+    def check_crash_java(self, timeout: int = 1) -> None:
+        """ Проверка на наличие сообщение о крахе Java. Если оно есть, то закрыть Firefox. """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                screenshot = self._locate_and_click(ScreenShots.CRASH_JAVA.value)
+                if screenshot:  # Если сообщение о крахе Java, то закрываем браузер.
+                    command = "taskkill /F /IM firefox.exe"  # Команда для завершения процессов браузера Firefox.
+                    subprocess.run(command, shell=True)  # Выполнение команды
+            finally:
+                pass
+
+    def navigate_menu_from_start(self) -> None:
+        """ В окне firefox открыть меню ГОЛД и пройти по нему
+        до ввода номера товара, до пункта 33.4 """
+
+        self.click_screenshot(ScreenShots.GOLD_LOADED.value)  # Проверка загрузки firefox.
+        self.click_screenshot(ScreenShots.STOCK_11.value)  # Кликнуть по stock 11
+        self.input_in_field_with_offset(ScreenShots.LOGIN_PLACE.value, LOGIN_VALUE, 20)
+        self.input_in_field_with_offset(ScreenShots.PASSWORD_PLACE.value, PASSWORD_VALUE, 20)
+        self.click_screenshot(ScreenShots.ENTER_LOGIN.value)  # Нажать войти.
+        menu_33 = self.click_screenshot(ScreenShots.MENU_33.value, timeout=30)  # 33 пункт меню
+        pyautogui.doubleClick(menu_33)
+        menu_33_4 = self.click_screenshot(ScreenShots.MENU_33_4.value)  # 33.4 пункт меню
+        pyautogui.doubleClick(menu_33_4)
+        self.click_screenshot(ScreenShots.TO_SEAL_OVERDUE.value)  # Включить-скрыть просроченные.
+        x, y = pyautogui.position()
+        pyautogui.click(x - 80, y)
+
+    def navigate_menu_from_middle(self):
+        """Пройти по меню при открытом меню java"""
         try:
-            time.sleep(0.1)
-            image = pyautogui.locateOnScreen(CRASH_JAVA, confidence=.7)
-            # Если сообщение о крахе Java, то закрываем браузер.
-            if image:
-                # Команда для завершения процессов браузера Firefox.
-                command = "taskkill /F /IM firefox.exe"
-                # Выполнение команды
-                subprocess.run(command, shell=True)
-        finally:
-            pass
+            self.click_screenshot(ScreenShots.MENU_33_4.value)
 
-
-def input_in_gold_by_screenshot(screenshot: str, string_for_input: str, x_offset: int) -> None:
-    """Ввести строку в поле голда. Поиск по скриншоту, смещение по оси x"""
-    # Находим положение нужного скриншота(слова).
-    input_number = wait_and_click_screenshot(screenshot)
-    pyautogui.moveTo(input_number)
-    x, y = pyautogui.position()
-    pyautogui.moveTo(x + x_offset, y)  # Смещаемся по оси x вправо от скриншота, в поле для ввода.
-    pyautogui.doubleClick()
-    pyautogui.hotkey('ctrl', 'a')
-    pyautogui.press('backspace')  # Очистить поле
-    pyperclip.copy(string_for_input)
-    pyautogui.hotkey('ctrl', 'v')  # Вставить значение.
-
-
-##################################################################################
-# Функции, связанные с открытием GOLD.
-##################################################################################
-def check_process_in_os(process: str):
-    """Проверяет запущен ли процесс в ОС"""
-    for proc in psutil.process_iter():  # Перебираем текущие процессы.
-        name = proc.name()
-        if name == process:
-            return proc  # Возвращаем работающий процесс
-    return None
-
-
-def activate_current_firefox(proc) -> bool | None:
-    """ Раскрыть окно запущенного firefox. """
-    if proc is not None:
-        wait_and_click_screenshot(FIREFOX_ICON_PANEL, confidence=0.8)
-        return True
-    return None
-
-
-def activate_current_java(proc) -> bool | None:
-    """ Раскрыть окно запущенного java."""
-    if proc is not None:
-        try:
-            wait_and_click_screenshot(MENU_ICON, confidence=0.8)
         except ScreenshotNotFoundException:
-            return None
-        return True
-    return None
+            self.check_crash_java()
+            self.click_screenshot(ScreenShots.MENU_33.value)
+            self.click_screenshot(ScreenShots.MENU_33_4.value)
 
-
-def launch_firefox_for_gold_from_desktop() -> None:
-    """Найти на рабочем столе иконку firefox и открыть ее."""
-    # Переключить на английскую раскладку
-    time.sleep(1)
-    pyautogui.hotkey('Win', 'd')  # Свернуть все окна.
-    wait_and_click_screenshot(FIREFOX_ICON)  # Открыть ГОЛД через иконку на раб.столе.
-    pyautogui.press('enter')
-
-
-def navigate_gold_menu_until_product_number_input() -> None:
-    """ В окне firefox открыть меню ГОЛД и пройти по нему
-    до ввода номера товара, до пункта 33.4 """
-    wait_and_click_screenshot(GOLD_LOADED)  # Проверка загрузки и активности firefox.
-    wait_and_click_screenshot(STOCK_11)  # Кликнуть по stock 11
-    input_in_gold_by_screenshot(LOGIN_PLACE, LOGIN_VALUE, 20)  # Ввести логин.
-    input_in_gold_by_screenshot(PASSWORD_PLACE, PASSWORD_VALUE, 20)  # Ввести пароль.
-    wait_and_click_screenshot(LOGIN)  # Войти.
-    menu_33 = wait_and_click_screenshot(MENU_33, timeout=30)  # 33 пункт меню
-    pyautogui.doubleClick(menu_33)
-    menu_33_4 = wait_and_click_screenshot(MENU_33_4)  # 33.4 пункт меню
-    pyautogui.doubleClick(menu_33_4)
-    wait_and_click_screenshot(TO_SEAL_OVERDUE)  # Поставить галочку на отметку скрыть просроченные.
-    x, y = pyautogui.position()
-    pyautogui.click(x - 80, y)
-
-
-def activate_current_gold_or_launch_new_gold() -> None:
-    """ Проверка запущенных процессов firefox и java и их
-    активирование(раскрытие окон) или запуск Голда по новой, с иконки на рабочем столе."""
-    # Проверяем запущены ли процессы: firefox и java
-    firefox_proc = check_process_in_os(FIREFOX_PROC)
-    java_proc = check_process_in_os(JAVA_PROC)
-
-    # Проверяем активны ли окна.
-    active_firefox = activate_current_firefox(firefox_proc)
-    active_java = activate_current_java(java_proc)
-
-    # Если активны окна firefox и java
-    if active_firefox and active_java:
-        try:
-            wait_and_click_screenshot(MENU_33_4)
-        except ScreenshotNotFoundException:
-            check_crash_java()
-            wait_and_click_screenshot(MENU_33)
-            wait_and_click_screenshot(MENU_33_4)
-
-    # Если запущен только firefox
-    elif active_firefox and not active_java:
-        try:
-            # Если найдет значит код в карточке товара.
-            wait_and_click_screenshot(DECLARATION_CARD)
+    def navigate_from_product_card(self):
+        """ Если программа в карточке товара."""
+        try:  # Если найдет значит код в карточке товара.
+            self.click_screenshot(ScreenShots.DECLARATION_CARD.value)
             pyautogui.hotkey('Alt', 'b')
         except ScreenshotNotFoundException:
             pass
 
-    # Весь путь с иконки на рабочем столе.
-    elif not active_firefox and not active_java:
-        launch_firefox_for_gold_from_desktop()
-        navigate_gold_menu_until_product_number_input()
 
+class GoldLauncher(GoldScreenShotWorker):
+    """ Основная задача - запуск и подготовка для дальнейшей работы программы GOLD.
+    Через определение текущего состояния программы(процесса, браузера, окна)
+    и дальнейшая навигация. """
 
-##################################################################################
-# Вспомогательные функции - для работы с файлами.
-##################################################################################
-def write_last_viewed_number_to_file(text_file: str, number) -> None:
-    """Записать номер последнего просмотренного документа в файл."""
-    with open(text_file, 'w', encoding='utf-8') as file:
-        file.write(str(number))
+    def activate_current_firefox(self, proc) -> bool | None:
+        """ Раскрыть окно запущенного firefox. """
+        if proc is not None:
+            self.click_screenshot(ScreenShots.FIREFOX_ICON_PANEL.value, confidence=0.8)
+            return True
 
-
-def read_last_viewed_number_from_file(text_file: str) -> int:
-    """Прочитать номер последнего просмотренного документа из файла."""
-    if not os.path.isfile(text_file):
-        with open(text_file, 'w', encoding='utf-8') as file:
-            file.write('')
-    with open(text_file, 'r', encoding='utf-8') as file:
-        last_number = int(file.read())
-        return last_number
-
-
-def return_existing_xlsx_or_create_new(temp_df: str) -> str:
-    """Проверить есть ли xlsx файл для временного хранения данных,
-    если да - открыть его, если нет_ создать."""
-    temp_file = temp_df
-    if os.path.isfile(temp_file):
-        return temp_file
-    workbook = openpyxl.Workbook()
-    log_to_file_info("Создан файл %s" % FILE_GOLD)
-
-    workbook.save(temp_file)
-    return temp_file
-
-
-def read_dict_from_json_file(json_file: str = APPLICANTS_CODES_AND_NAME) -> dict:
-    with open(json_file, 'r') as file:
-        applicants_codes_and_names = json.load(file)
-        return applicants_codes_and_names
-
-
-##################################################################################
-# Конкретные функции для работы с товарами и декларациями.
-##################################################################################
-def search_coords_of_all_declarations_on_page_in_gold() -> list | None:
-    """После ввода кода товара в ГОЛД, ищет и возвращает координаты центров
-    всех декларации и свидетельств, которые есть по данному коду товара."""
-    centers = set()  # Множество для центров деклараций.
-
-    # Ищем местоположение серой декларации, вычисляем ее центр и добавляем в centers.
-    gray_declaration = wait_and_click_screenshot(GRAY_DECLARATION, timeout=1, confidence=0.6)
-    center_x = gray_declaration.left + gray_declaration.width // 2
-    center_y = gray_declaration.top + gray_declaration.height // 2
-    centers.add((center_x, center_y))
-
-    # Загрузить шаблон (скриншот который нужно найти)
-    template = cv2.imread(GREEN_DECLARATION, 0)
-    template_weight, template_height = template.shape[::-1]
-
-    # Сделать скриншот экрана(на чем будем искать шаблон), конвертировать в массив.
-    screenshot = pyautogui.screenshot()
-    screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-    screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-
-    # Ищем шаблон на скриншоте экрана.
-    res = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
-    # Устанавливаем порог сходства.
-    threshold = 0.6
-    # Сохраняем координаты всех совпадений.
-    locations = np.where(res >= threshold)
-
-    # Перебираем все совпадения и ищем центр каждого из них, добавляем в centers.
-    for pt in zip(*locations[::-1]):
-        center_x = pt[0] + template_weight // 2
-        center_y = pt[1] + template_height // 2
-        centers.add((center_x, center_y))
-
-    return list(centers)  # Преобразуем на выходе в список, для дальнейшей итерации по нему.
-
-
-def get_data_about_one_doc_in_gold(applicants_codes_and_name: dict) -> dict:
-    """
-    Непосредственное сохранение данных по одной декларации.
-    Сохранить номер Документа(декларации) и наименование изготовителя в словарь.
-    """
-    data = {}
-    # Проверяем, что провалились в декларацию.
-    wait_and_click_screenshot(DECLARATION_CARD)
-    # Поля, из которых нужно собрать данные.
-    needed_fields = (REG_NUMBER_FIELD, APPLICANT_CODE, MANUFACTURER_FIELD, DATE_OF_END)
-
-    for field in needed_fields:
-        wait_and_click_screenshot(field)  # Ищем скриншот нужного поля.
-        x, y = pyautogui.position()
-        pyautogui.click(x + 100, y)  # Смещаемся в поле для ввода
-        if field == APPLICANT_CODE:
-            pass
-        else:
-            pyautogui.doubleClick()
-        pyautogui.hotkey('Alt', 'a')  # Выделяем текст
-        pyperclip.copy("")
-        pyautogui.hotkey('Ctrl', 'c')  # Копируем текст из поля.
-        field_value = pyperclip.paste()
-
-        # Заполнить словарь соответствующими значениями.
-        if field_value == '' and field == REG_NUMBER_FIELD:
-            data['ДОС'] = '-'
-        elif field_value and field == REG_NUMBER_FIELD:
-            data['ДОС'] = field_value
-        elif field_value == '' and field == MANUFACTURER_FIELD:
-            data['Изготовитель'] = '-'
-        elif field_value and field == MANUFACTURER_FIELD:
-            data['Изготовитель'] = field_value
-
-        elif field_value and field == DATE_OF_END:
-            data['Дата окончания'] = field_value.replace('/', '.')
-
-        elif field == APPLICANT_CODE:
+    def activate_current_java(self, proc) -> bool | None:
+        """ Раскрыть окно запущенного java."""
+        if proc is not None:
             try:
-                applicant_name = applicants_codes_and_name[field_value]
-                data['Заявитель ГОЛД'] = applicant_name
-            except KeyError:
-                data['Заявитель ГОЛД'] = 'Нет в JSON'
+                self.click_screenshot(ScreenShots.MENU_IN_GOLD.value, confidence=0.8)
+                return True
+            except ScreenshotNotFoundException:
+                pass
 
-    return data
+    def launch_gold_from_desktop(self) -> None:
+        """Найти на рабочем столе иконку firefox и открыть ее."""
+        # Переключить на английскую раскладку
+        time.sleep(1)
+        pyautogui.hotkey('Win', 'd')  # Свернуть все окна.
+        self.click_screenshot(ScreenShots.FIREFOX_ICON.value)  # Открыть через иконку на столе.
+        pyautogui.press('enter')
+
+    def activate_current_gold_or_launch_new_gold(self) -> None:
+        """ Основная функция запуска. Определение на каком этапе
+        находится ГОЛД и выбор дальнейшей навигации по нему."""
+        # Проверка запущены ли процессы: firefox и java
+        firefox_proc = check_process_in_os(FIREFOX_PROC)
+        java_proc = check_process_in_os(JAVA_PROC)
+        # Проверка активны ли окна.
+        active_firefox = self.activate_current_firefox(firefox_proc)
+        active_java = self.activate_current_java(java_proc)
+
+        if active_firefox and active_java:  # Если активны окна firefox и java
+            self.navigate_menu_from_middle()
+        elif active_firefox and not active_java:  # Если запущен только firefox
+            self.navigate_from_product_card()
+        elif not active_firefox and not active_java:  # Весь путь с иконки на рабочем столе.
+            self.launch_gold_from_desktop()
+            self.navigate_menu_from_start()
 
 
-def add_doc_numbers_and_manufacturers_in_df(input_file: str, output_file: str):
-    """Основная, связующая функция модуля.
-    Добавить в листе мониторинга тип документа,
-    номер декларации и изготовителя из ГОЛД."""
+class ADocDataCollector(GoldScreenShotWorker):
+    """ Задача - сбор данных в ГОЛД на один документ. """
 
-    # Читаем проверяемый файл с порядковым номером, кодом товара и наименования товара.
-    old_df = pd.read_excel(input_file)
+    def get_data_about_one_doc_in_gold(self, applicants_codes_and_name: dict) -> dict:
+        """ Собираем данные в ГОЛД по одному документу из соответствующих полей."""
+        doc_data = {}
+        # Проверка, что провалились в декларацию.
+        self.click_screenshot(ScreenShots.DECLARATION_CARD.value, timeout=1)
 
-    # TEMP_DF - временный файл xlsx, в котором хранятся строки с ДОС и изготовителем.
-    gold_df = return_existing_xlsx_or_create_new(output_file)
+        # Действия по сохранению данных в словарь, исходя из наименования поля.
+        actions_for_fields = {
+            FieldsInProductCardGold.REG_NUMBER_FIELD:
+                lambda value: doc_data.update({'ДОС': '-' if value == '' else value}),
+            FieldsInProductCardGold.MANUFACTURER_FIELD:
+                lambda value: doc_data.update({'Изготовитель': '-' if value == '' else value}),
+            FieldsInProductCardGold.DATE_OF_END:
+                lambda value: doc_data.update({'Дата окончания': value.replace('/', '.')}),
+            FieldsInProductCardGold.APPLICANT_CODE:
+                lambda value: doc_data.update(
+                    {'Заявитель ГОЛД': applicants_codes_and_name.get(value, 'Нет в JSON')})}
 
-    # Последний порядковый номер из просмотренных в ГОЛД кодов товаров.
-    try:
-        last_viewed_number = read_last_viewed_number_from_file(VIEWED_GOLD_PRODUCTS)
-        if last_viewed_number is None:
-            last_viewed_number = 0
-    except ValueError:
-        last_viewed_number = 0
+        # Цикл по полям карточки продукта.
+        for field in FieldsInProductCardGold:
+            self.click_screenshot(field.value)
+            x, y = pyautogui.position()
+            pyautogui.click(x + 100, y)
+            # Доп действие для кода заявителя.
+            if field != FieldsInProductCardGold.APPLICANT_CODE:
+                pyautogui.doubleClick()
 
-    if gold_df is None:  # Если файл пустой, создаем DataFrame.
-        new_df = pd.DataFrame(columns=[
-            'Порядковый номер АМ',
-            'Код товара',
-            'Наименование товара',
-            'ДОС',
-            'Дата окончания',
-            'Изготовитель',
-            'Заявитель ГОЛД'
-        ])
-    else:  # Если нет, то читаем существующий
-        new_df = pd.read_excel(gold_df)
+            field_value = self.select_and_copy()
+            # Сразу вызываем действие, полученное из словаря, и передаем в него field_value.
+            actions_for_fields.get(field, lambda value: None)(field_value)
 
-    # Запустить ГОЛД.
-    activate_current_gold_or_launch_new_gold()
-    count = 0  # Для количества обработанных кодов товаров за вызов функции.
+        return doc_data
 
-    try:
-        # Перебираем построчно данные из excel.
-        for _, row in old_df[last_viewed_number:].iterrows():
-            if row.name % 300 == 0:
-                copy_xlsx_file = r'./%s/copies_of_gold/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, row.name)
-                total_df = pd.concat([old_df, new_df])
-                total_df.to_excel(copy_xlsx_file, index=False)
 
-            # Читаем код товара из файла.
-            product_number = row.loc['Код товара']
+class GoldCollector(ADocDataCollector, GoldLauncher):
+    """ Основная задача - сбор всех данных в GOLD.
+    Читает построчно данные из TwoColumnsFile и собирает данные из ГОЛД."""
 
-            # Проверяем не просматривали ли его ранее
-            if row.loc['Порядковый номер АМ'] <= last_viewed_number:
+    def __init__(self, two_columns_file, gold_file, last_number_file):
+        self.two_columns_df = pd.read_excel(two_columns_file)
+        self.gold_df = return_or_create_xlsx_file(gold_file)
+        self.last_viewed_number_in_gold = read_last_viewed_number_from_file(
+            last_number_file)
+        self.new_df = self.return_or_create_new_df()
+        self.applicants_codes_and_names = read_and_return_dict_from_json_file(
+            Files.APPLICANTS_CODES_AND_NAME_FROM_GOLD.value)
+
+    def return_or_create_new_df(self):
+        """Вернуть или создать DataFrame для итогового результата. """
+        if self.gold_df is None:  # Если файл пустой, создаем DataFrame.
+            new_df = pd.DataFrame(columns=COLUMNS_FOR_GOLD_DF)
+        else:  # Если нет, то читаем существующий
+            new_df = pd.read_excel(self.gold_df)
+        return new_df
+
+    def make_copy_of_gold_file(self, row_name):
+        """ Сделать копию ГОЛД файла"""
+        return_or_create_dir(r'./%s/copies_of_gold' % DIR_CURRENT_MONTHLY_MONITORING)
+        copy_xlsx_file = r'./%s/copies_of_gold/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTHLY_MONITORING, row_name)
+        total_df = pd.concat([self.two_columns_df, self.new_df])
+        total_df.to_excel(copy_xlsx_file, index=False)
+
+    def handle_no_data(self, row):
+        """ При сообщении нет данных добавление соответствующей строки в результат"""
+        new_ser = pd.Series(['Нет данных в GOLD'], index=['ДОС'])
+        new_row = row._append(new_ser)  # Добавляем в DataFrame.
+        self.new_df = self.new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+
+    def search_coords_of_all_docs_on_page_in_gold(self) -> list | None:
+        """ После ввода кода товара в ГОЛД, ищет и возвращает координаты
+        всех декларации и свидетельств, которые есть на экране по данному коду товара."""
+        centers = []  # Центры деклараций.
+        # Координаты документа с серым статусом, координаты центра добавляем в centers.
+        gray_doc_x, gray_doc_y = self.find_center_of_screenshot(
+            ScreenShots.GRAY_STATUS_DECLARATION.value)
+        centers.append((gray_doc_x, gray_doc_y))
+        # Координаты документов с зеленым статусом, координаты центров добавляем в centers.
+        centers_of_green_docs = self.find_centers_of_copies_of_template(
+            ScreenShots.GREEN_STATUS_DECLARATION.value)
+        centers.extend(centers_of_green_docs)
+        return centers
+
+    def get_data_by_centres_of_docs(self, centres, row):
+        """ Собрать информацию по всем документам на один код продукта. """
+        item = 0  # Переменная для итерации по списку центров.
+        while item < len(centres):
+            pyautogui.doubleClick(centres[item])
+            one_doc_data = self.get_data_about_one_doc_in_gold(self.applicants_codes_and_names)
+            new_ser = pd.Series([one_doc_data['ДОС'], one_doc_data['Дата окончания'],
+                                 one_doc_data['Изготовитель'], one_doc_data['Заявитель ГОЛД']],
+                                index=['ДОС', 'Дата окончания', 'Изготовитель', 'Заявитель ГОЛД', ])
+            # Новый Series добавляем в новый DF.
+            new_row = row._append(new_ser)
+            self.new_df = self.new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
+            self.press_back_in_gold()
+            item += 1
+
+    def add_data_from_gold_to_result_df(self):
+        """Получение данных по строкам через цикл."""
+        # Перебираем построчно данные из файла с кодами и наименованиями продуктов .
+        for _, row in self.two_columns_df[self.last_viewed_number_in_gold:].iterrows():
+
+            # На каждой 500 строке сделать копию GOLD-файла(DataFrame)
+            if row.name % 500 == 0 and row.name != 0:
+                self.make_copy_of_gold_file(row.name)
+
+            # Ввести номер кода товара
+            product_number = row.loc['Код товара']  # Код товара из файла.
+            self.input_in_field_with_offset(ScreenShots.PRODUCT_INPUT_FIELD.value,
+                                            product_number, 120)
+            self.press_search_in_gold()
+            # Дождаться загрузки страницы
+            self.waiting_disappear_screenshot(ScreenShots.LOADING_PRODUCT.value)
+
+            # Проверить и обработать сообщение на экране об отсутствии данных.
+            error_no_data = self.handle_error_no_data_in_web()
+            if error_no_data:
+                self.handle_no_data(row)
                 continue
 
-            else:  # Если ранее код товара не просматривали.
-                # Ввести номер кода товара
-                input_in_gold_by_screenshot(PRODUCT_INPUT, product_number, 120)
-                pyautogui.hotkey('Alt', 't')  # Поиск.
-                waiting_disappear_screenshot(LOADING_PRODUCT)  # Дождаться, загрузки страницы
-                # Проверить на наличие сообщения на экране об отсутствии данных.
-                error_no_data = handle_error_no_data_in_web()
+            # for _ in range(5):
+            centres_of_docs = self.search_coords_of_all_docs_on_page_in_gold()
+            if centres_of_docs:  # Если найдены центры деклараций, то получаем данные.
+                self.get_data_by_centres_of_docs(centres_of_docs, row)
 
-                # Если в ГОЛД было серое сообщение об отсутствии данных, то записываем в Series и пропускаем итерацию.
-                if error_no_data:
-                    new_ser = pd.Series(['Нет данных в GOLD'], index=['ДОС'])
-                    new_row = row._append(new_ser)  # Добавляем в DataFrame.
-                    new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
-                    continue
+            self.last_viewed_number_in_gold = row.loc['Порядковый номер АМ']
+        write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value,
+                                         self.last_viewed_number_in_gold)
 
-                applicants_codes_and_names = read_dict_from_json_file()
-                # Если сообщения не было, то ищем центры.
-                # Координаты центров всех деклараций, которые есть на странице в ГОЛД.
-                for _ in range(5):
-                    centres = search_coords_of_all_declarations_on_page_in_gold()
-
-                    if centres:  # Если найдены центры деклараций.
-                        item = 0  # Переменная для итерации по списку центров.
-                        while item < len(centres):
-                            pyautogui.doubleClick(centres[item])
-                            data_from_gold = get_data_about_one_doc_in_gold(applicants_codes_and_names)
-                            new_ser = pd.Series([data_from_gold['ДОС'],
-                                                 data_from_gold['Дата окончания'],
-                                                 data_from_gold['Изготовитель'],
-                                                 data_from_gold['Заявитель ГОЛД'],
-                                                 ],
-                                                index=['ДОС', 'Дата окончания', 'Изготовитель', 'Заявитель ГОЛД',])
-                            # Новый Series добавляем в новый DF.
-                            new_row = row._append(new_ser)
-                            new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DataFrame
-
-                            pyautogui.hotkey('Alt', 'b')  # Возврат к вводу кода товара в ГОЛД.
-                            item += 1
-                    break
-                count += 1
-                last_viewed_number = row.loc['Порядковый номер АМ']
-        write_last_viewed_number_to_file(VIEWED_GOLD_PRODUCTS, last_viewed_number)
-
-    except ScreenshotNotFoundException as error:
-        log_to_file_info('Скриншот %s не найден' % error.image_path)
-        raise StopIterationExceptionInGold
-
-    finally:
-        # Записать DataFrame во временный xlsx файл.
-        new_df.to_excel(gold_df, index=False)
-        # А просмотренные коды товаров в текстовой файл.
-        write_last_viewed_number_to_file(VIEWED_GOLD_PRODUCTS, last_viewed_number)
-        return count
+    def process_add_data_from_gold_to_result_df(self):
+        """ Запустить код сбора данных через конструкцию try/except """
+        self.activate_current_gold_or_launch_new_gold()
+        try:
+            self.add_data_from_gold_to_result_df()
+        except ScreenshotNotFoundException as error:
+            log_to_file_info('Скриншот %s не найден' % error.image_path)
+            raise StopIterationExceptionInGold
+        finally:
+            self.new_df.to_excel(self.gold_df, index=False)
+            write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value,
+                                             self.last_viewed_number_in_gold)
 
 
-def launch_gold_module(attempts_for_range: int, input_file: str, output_file: str) -> None:
-    """
-    Запустить код из модуля, привести в действие все имеющиеся функции.
-
-    :param attempts_for_range: количество итераций, итерации нужны на случай ошибок
-     при работе с ГОЛД, если происходит ошибка, то по новой запускается ГОЛД.
-    :param input_file: файл с тремя колонками: порядковый номер АМ, код товара, наименование товара
-    :param output_file: файл, в котором будет сохранен датафрейм с данными из ГОЛД.
-    """
+def launch_gold_module(attempts_for_range: int, two_columns_file: str, gold_file: str) -> None:
+    """ Запуск всего кода модуля. """
     log_to_file_info("Запуск программы по работе с ГОЛД - 'launch_gold_module'")
     for i in range(attempts_for_range):
-        log_to_file_info("Старт итерации проверки данных в ГОЛД № %d" % i)
-        start_iter = time.time()
-        count = 0
         try:
-            count = add_doc_numbers_and_manufacturers_in_df(input_file, output_file)
+            gold_collector = GoldCollector(two_columns_file,
+                                           gold_file,
+                                           Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
+            gold_collector.process_add_data_from_gold_to_result_df()
         finally:
-            log_to_file_info("Итерация № %d окончена. Обработано - %d кодов товара. "
-                        "Время выполнения %f." % (i, count, time.time() - start_iter))
-
-            two_columns = pd.read_excel(FILE_FOR_TWO_COLUMNS)
-            gold = pd.read_excel(FILE_GOLD)
+            two_columns = pd.read_excel(two_columns_file)
+            gold = pd.read_excel(gold_file)
             # Проверка, проверены ли все номера в ГОЛД
             try:
-                if two_columns['Порядковый номер АМ'].iloc[-1] == gold['Порядковый номер АМ'].iloc[-1]:
+                if two_columns.iloc[-1].name == gold.iloc[-1].name:
                     break
             except KeyError:
                 pass
