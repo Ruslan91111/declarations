@@ -1,984 +1,311 @@
 """
 Модуль работы кода с интернет-ресурсами, а именно, сайтами проверки данных: ФСА, СГР, ГОСТ.
-
-Содержит функции:
-    add_egrul_information
-    get_address_from_egrul
-    _compare_addresses
-    add_gost_information
-    check_gost
-    _get_dict_from_text_nsi
-    get_data_from_nsi
-    make_new_tab
-    make_all_required_tabs
-    make_dict_ogrn_address
-    check_number_declaration
-    make_series_for_result
-    check_or_create_result_xlsx
-    write_viewed_numbers_to_file
-    checking_data_in_iteration_through_browser - основная функция
-    launch_checking - запуск кода
-класс:
-    FSAScrapper - для работы с сайтом ФСА с сбора данных с него по каждой декларации.
 """
-import os
 import random
 import sys
 import time
-from datetime import datetime
 import re
-from enum import Enum
-from types import NoneType
 
 import pandas as pd
 import pyautogui
 from fake_useragent import UserAgent
 
 from selenium import webdriver
+from selenium.common import TimeoutException, ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import (NoSuchElementException,
-                                        TimeoutException,
-                                        ElementClickInterceptedException,
-                                        StaleElementReferenceException, NoSuchWindowException)
+from selenium.webdriver import ActionChains
 
 from config import PROXY
-from exceptions import (EgrulCaptchaException, MaxIterationException, StopBrowserException)
-from gold_data_manager import write_last_viewed_number_to_file, read_last_viewed_number_from_file, \
-    DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR
+from exceptions import (StopBrowserException)
+from monitoring.document_dataclass import Document
+from monitoring.functions_for_work_with_files_and_dirs import (
+    write_last_viewed_number_to_file, read_last_viewed_number_from_file, return_or_create_new_df,
+    return_or_create_xlsx_file, return_or_create_dir)
 from logger_config import log_to_file_info, log_to_file_error
-
-##################################################################################
-# Константы
-##################################################################################
-# URLs
-URL_FSA_DECLARATION = "https://pub.fsa.gov.ru/rds/declaration"
-URL_FSA_CERTIFICATE = "https://pub.fsa.gov.ru/rss/certificate"
-URL_EGRUL = "https://egrul.nalog.ru/"
-URL_RUSPROFILE = "https://www.rusprofile.ru/"
-URL_GOST = "https://etr-torgi.ru/calc/check_gost/"
-date_today = datetime.now().strftime('%Y-%m-%d')
-URL_NSI = f'https://nsi.eaeunion.org/portal/1995?date={date_today}'
-
-PATH_TO_DRIVER = r'.\chromedriver.exe'
-
-# Файлы
-VIEWED_IN_FSA_NUMBERS = r'.\%s\viewed_in_web_numbers_%s.txt' % (DIR_CURRENT_MONTH_AND_YEAR, MONTH_AND_YEAR)
-
-# Подстроки, которые необходимо удалить из адресов перед их сравнением.
-PARTS_TO_BE_REMOVED = [
-    ' Б ', 'БУЛЬВАР', 'Б-Р',
-    ' В ', ' ВН ',
-    'ГОРОД ', ' Г ',
-    ' Д ', 'ДОМ ',
-    ' З ', ' ЗД ',
-    'ИМЕНИ ', ' ИМ ',
-    'КАБИНЕТ', ' К ', ' КАБ ',
-    ' КОМ ', 'КОМНАТА ',
-    'КОРПУС ',
-    ' М ', 'М Р-Н', 'МИКРОРАЙОН', ' МКР ',
-    ' НАБ ', 'НАБЕРЕЖНАЯ ',
-    ' ОБЛ ', 'ОБЛАСТЬ',
-    ' О ', ' ОФ ', 'ОФИС ',
-    ' П ',
-    ' ПЕР ', 'ПЕРЕУЛОК',
-    ' ПОМ ', 'ПОМЕЩ ', 'ПОМЕЩЕНИЕ',
-    'ПОСЕЛОК ГОРОДСКОГО ТИПА', 'ПОС ', 'ПГТ ',
-    ' ПР-Д ', 'ПРОЕЗД ',
-    ' РП ', 'РАБОЧИЙ ПОСЕЛОК',
-    'РАЙОН', ' Р-Н ',
-    'РЕСПУБЛИКА', ' РЕСП ',
-    'РОССИЯ', 'РОССИЙСКАЯ ФЕДЕРАЦИЯ',
-    ' С ', ' СЕЛО ',
-    'СТ-ЦА', 'СТАНИЦА',
-    ' СТР ', 'СТРОЕНИЕ ',
-    ' ТЕР ', 'ТЕРРИТОРИЯ',
-    ' УЛ ', 'УЛИЦА ',
-    ' УЧ ',
-    ' Ч ', 'ЧАСТЬ',
-    'ШОССЕ ', ' Ш ',
-    ' ЭТ ', 'ЭТАЖ ',
-]
-
-
-# X-paths, используемые в коде.
-X_PATHS = {
-
-    # Сайт для ФСА(декларации и свидетельства)
-    'fsa_chapter': '//fgis-links-list/div/ul/li',
-    'fsa_input_field': "//fgis-text/input",
-    'fsa_search_button': "//button[contains(text(), 'Найти')]",
-    'fsa_pick_document': "/*//tbody/tr[{row}]/td[{column}]",
-    # 'fsa_pick_document': "//*/fgis-h-table-limited-text-cell/div[1]",
-    'fsa_return_declaration': "//fgis-rds-view-declaration-toolbar/div/div[1]",
-    'fsa_return_certificate': "//fgis-rss-view-certificate-toolbar/div/div[1]",
-    'fsa_doc_status': '//fgis-toolbar-status/span',
-    'fsa_last_iter': '//fgis-links-list/div/ul/li',
-
-    # Сайт для СГР
-    'nsi_filter': '/html/body/div[1]/div/div/div[2]/div/div[1]/div[3]/'
-                  'div/div/div[1]/table/thead/tr/th[2]/div/div/button/span',
-    'nsi_input_field': '/html/body/div[3]/div[1]/div/input',
-    'nsi_check_mark': '/html/body/div[3]/div[2]/button[2]/span[1]',
-    'nsi_status': '//tbody/tr/td[3]/div/div/a/div/span',
-    'nsi_no_data': '//tbody/tr/td',
-    'nsi_applicant': '//tbody/tr/td[8]/div/div/span',
-    'nsi_manufacturer': '//tbody/tr/td[7]/div/div/span',
-    'nsi_document_name': '//tbody/tr/td[9]/div/div/span',
-    'nsi_icon_file': '//*/table/tbody/tr/td[1]/button/span[1]',
-
-    # ЕГРЮЛ
-    'egrul_input': '//*[@id="query"]',
-    'search_button_egrul': '//*[@id="btnSearch"]',
-    'egrul_captcha': '//*[@id="frmCaptcha"]',
-
-    # РУСПРОФАЙЛ
-    'rusprofile_first_input': '//*[@id="indexsearchform"]/div/input',
-    'rusprofile_first_search_button': '//*[@id="indexsearchform"]/button/span',
-
-    'rusprofile_input': '//*[@id="searchform"]/input[1]',
-    'rusprofile_search_button': '//*[@id="searchform"]/button[2]',
-    'rusprofile_address_place': '//*[@id="anketa"]/div[2]/div[1]/div[2]',
-    # 'rusprofile_address_place': '//*[@id="anketa"]/div[2]/div[1]/div[2]/address',
-
-    # ГОСТ
-    'gost_input_field': '//*[@id="poisk-form"]/input',
-    'gost_search_button': '//*[@id="gost_filter"]',
-    'gost_status': '//*[@id="data-box"]/div/div/div/p/b',
-}
-
-# Словарь с прочерками.
-BLANK_DICT_FOR_FILLING = {
-    'Наличие ДОС': 'Не найдено на сайте',
-    # 'Статус на сайте': '-',
-    'Соответствие с сайтом': '-',
-    'Соответствие адресов с ЕГРЮЛ': '-',
-    'Адрес места нахождения applicant': '-',
-    'Статус НД': '-'
-}
-
-# Названия колонок для Series, формируемого в результате парсинга веб-сайтов.
-TITLE_FOR_SERIES_TO_FINAL_DF = [
-    'Сокращенное наименование юридического лица applicant',
-    'Дата проверки',
-    'Наличие ДОС',
-    'Соответствие с сайтом',
-    'Статус на сайте',
-    'ОГРН applicant',
-    'ОГРН manufacturer',
-    'Соответствие адресов с ЕГРЮЛ',
-    'Адрес места нахождения applicant',
-    'Адрес места нахождения applicant ЕГРЮЛ',
-    'Адрес места нахождения manufacturer',
-    'Адрес места нахождения manufacturer ЕГРЮЛ',
-    'Статус НД',
-    'ФИО',
-]
-
-# Нужные ключи для сбора с ФСА
-REQUIRED_KEYS_TO_FSA = {
-    'Статус декларации', 'Полное наименование юридического лица',
-    'Сокращенное наименование юридического лица',
-    'Основной государственный регистрационный номер юридического лица (ОГРН)',
-    'Адрес места нахождения', 'Наименование документа',
-    'Обозначение стандарта, нормативного документа'}
-
-# Названия колонок для финального DataFrames, формируемого и записываемого в result_data.
-COLUMNS_FOR_FINAL_DF = [
-    'Порядковый номер АМ',
-    'Код товара',
-    'Наименование товара',
-    'ДОС',
-    'Дата окончания',
-    'Изготовитель',
-    'Заявитель ГОЛД',
-    'Поставщик из интернет-ресурса',
-    'Дата проверки',
-    'Наличие ДОС',
-    'Соответствие с сайтом',
-    'Статус на сайте',
-    'ОГРН заявителя',
-    'ОГРН изготовителя',
-    'Соответствие адресов с ЕГРЮЛ',
-    'Адрес заявителя',
-    'Адрес заявителя ЕГРЮЛ',
-    'Адрес изготовителя',
-    'Адрес изготовителя ЕГРЮЛ',
-    'Статус НД',
-    'ФИО',
-]
-
-
-##################################################################################
-#  ЕГРЮЛ
-# Работа с адресами - проверяем адреса юридических лиц, взятые с сайта ФСА.
-# Дополнительно берем адреса по ОГРН с сайта ЕГРЮЛ и сравниваем между собой.
-##################################################################################
-def add_to_data_egrul_information(data: dict, tabs: dict, dict_ogrn_address: dict,
-                                  browser_, wait_) -> (dict, dict):
-    """Добавить в словарь данных о проверяемом документе адресов из ЕГРЮЛ.
-
-    Предварительно проверить не проверяли ли ОГРН юрлиц ранее, если да,
-    то взять адрес из словаря ранее проверенных, если не проверяли,
-    то открыть сайт ЕГРЮЛ и взять из него адрес. В конце функции сравнить адреса
-    и записать вывод о соответствии адресов на проверяемом сайте и сайте ЕГРЮЛ.
-
-    : param data: словарь с данными о документе, полученными с сайта, в том числе юр.лицах,
-    : param tabs: словарь с вкладками для переключения в браузере,
-    : param dict_ogrn_address: словарь, где ключи - ОГРН, а значения адреса юр.лиц,
-    """
-
-    for org in ('applicant', 'manufacturer'):
-        try:  # Проверяем не проверялся ли ОГРН ранее.
-            data[f'Адрес места нахождения {org} ЕГРЮЛ'] = dict_ogrn_address[data[f'ОГРН {org}']]
-            continue  # Если проверялся, то пропускаем итерацию.
-        except KeyError:
-            pass
-
-        # Если ранее ОГРН не проверялся. Пытаемся найти и сохранить адрес с сайта ЕГРЮЛ.
-        browser_.switch_to.window(tabs['rusprofile'])
-        data = get_address_from_rusprofile(data, org, browser_, wait_)
-
-        # Записываем в словарь результат сравнения.
-        try:
-            dict_ogrn_address[data[f'ОГРН {org}']] = data[f'Адрес места нахождения {org} ЕГРЮЛ']
-        except KeyError:
-            pass
-
-    # Записываем в словарь вывод о соответствии адресов.
-    if 'Нет ОГРН' in data.values():  # Если у поставщика или изготовителя не было ОГРН.
-        data['Соответствие адресов с ЕГРЮЛ'] = 'НЕТ ОГРН'
-    else:
-        # ОГРН был - вызвать функцию сравнения адресов.
-        data = _compare_addresses(data)  
-
-    return data, dict_ogrn_address
-
-
-def get_address_from_egrul(data_web: dict, org: str, browser_, wait_) -> dict:
-    """
-    Взять адрес с сайта ЕГРЮЛ по ОГРН. Если ОГРН нет, то так и записать.
-
-    : param data_web: словарь с данными о документе, полученными с сайта, в том числе юр.лицах,
-    : param org: строковое обозначение типа организации заявитель или изготовитель,
-    """
-
-    # Проверяем есть ли ОГРН у юр.лица.
-    if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != '-':  # Если есть ОГРН
-        try:
-            needed_element = wait_.until(EC.element_to_be_clickable(
-                (By.XPATH, X_PATHS['egrul_input'])))
-            needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
-
-            button_search = wait_.until(EC.element_to_be_clickable(
-                (By.XPATH, X_PATHS['search_button_egrul'])))
-            button_search.click()  # Нажать найти
-
-            # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
-            try:
-                text = wait_.until(EC.element_to_be_clickable((By.CLASS_NAME, 'res-text'))).text
-                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = text[:text.find('ОГРН')].strip(' ,')
-            except:
-                data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Ошибка noDataFound'
-
-            browser_.refresh()  # Обновить вкладку, для следующего ввода.
-
-        except TimeoutException:
-            raise EgrulCaptchaException
-
-    else:  # Если ОГРН у юр.лица нет.
-        data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
-
-    return data_web
-
-
-class ElementsOfAddress(Enum):
-    postal_code: str = 'span[itemprop="postalCode"]'
-    region: str = 'span[itemprop="addressRegion"]'
-    locality: str = 'span[itemprop="addressLocality"]'
-    street: str = 'span[itemprop="streetAddress"]'
-
-
-def get_address_from_rusprofile(data_web: dict, org: str, browser_, wait_) -> dict:
-    """
-    Взять адрес с сайта https://www.rusprofile.ru/ по ОГРН. Если ОГРН нет, то так и записать.
-
-    : param data_web: словарь с данными о документе, полученными с сайта, в том числе юр.лицах,
-    : param org: строковое обозначение типа организации заявитель или изготовитель,
-    """
-    # Проверяем есть ли ОГРН у юр.лица.
-    if f'ОГРН {org}' in data_web.keys() and data_web[f'ОГРН {org}'] != '-' and data_web[f'ОГРН {org}'] != 'Нет ОГРН':  # Если есть ОГРН
-        time.sleep(random.randint(1, 3))
-        try:
-            needed_element = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_input'])))
-            needed_element.send_keys(data_web[f'ОГРН {org}'])  # Ввести ОГРН
-            # pyautogui.hotkey('enter')
-            search_button = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_search_button'])))
-            time.sleep(random.randint(1, 3))
-            search_button.click()
-            # Сохраняем в словарь адрес с сайта ЕГРЮЛ.
-            address = ''
-            for i in ElementsOfAddress:
-                try:
-                    element = wait_.until(EC.element_to_be_clickable((By.CSS_SELECTOR, i.value)))
-                    address += (element.text + ' ')
-                except:
-                    pass
-            print(address)
-            data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = address
-
-        except TimeoutException:
-            raise Exception('Проблема в руспрофайле')
-
-
-    else:  # Если ОГРН у юр.лица нет.
-        data_web[f'Адрес места нахождения {org} ЕГРЮЛ'] = 'Нет ОГРН'
-
-    return data_web
-
-
-def _compare_addresses(data: dict) -> dict:
-    """
-    Сравнить строки - адреса: 1) с сайта и 2) ЕГРЮЛ.
-
-    Предварительно из строк(адресов) убрать обозначения, наподобие: ул. гор. и т.д.
-    И затем сравнить что останется в строках
-    """
-    elements_to_be_removed = PARTS_TO_BE_REMOVED  # Элементы, которые нужно убрать из строк.
-
-    def prepare_addresses(string: str) -> list:
-        """Подготовить адреса перед сравнением - убрать сокращения,
-        лишние знаки, разбить в словарь по символам."""
-        string = (string.upper().
-                  replace('.', ' ').
-                  replace('(', '').
-                  replace(')', '').
-                  replace(',', ' '))
-
-        # Убираем сокращения и обозначения.
-        for elem in elements_to_be_removed:
-            string = string.replace(elem, ' ')
-        string = string.replace(' ', '')
-        result = sorted(string)
-        return result
-
-    # Привести адреса к единому виду - отсортированным спискам строк.
-    applicant = prepare_addresses(data['Адрес места нахождения applicant'])
-    applicant_egr = prepare_addresses(data['Адрес места нахождения applicant ЕГРЮЛ'])
-    manufacturer = prepare_addresses(data['Адрес места нахождения manufacturer'])
-    manufacturer_egr = prepare_addresses(data['Адрес места нахождения manufacturer ЕГРЮЛ'])
-
-    # Сделать и внести в словарь вывод о соответствии адресов.
-    if applicant == applicant_egr and manufacturer == manufacturer_egr:
-        data['Соответствие адресов с ЕГРЮЛ'] = 'Соответствуют'
-    else:
-        data['Соответствие адресов с ЕГРЮЛ'] = 'Не соответствуют'
-
-    return data
-
-
-##################################################################################
-# Работа с ГОСТ.
-##################################################################################
-def add_to_data_gost_information(data: dict, tabs: dict, browser_, wait_) -> dict:
-    """
-    Добавить к словарю данные о статусе ГОСТ.
-
-    : param data: словарь с данными о документе, полученными с сайта,
-    : param tabs: словарь с вкладками для переключения в браузере
-    """
-    browser_.switch_to.window(tabs['gost'])
-    data = check_gost_on_web(data, wait_)  # ГОСТ.
-    return data
-
-
-def check_gost_on_web(data: dict, wait_) -> dict:
-    """Проверить ГОСТ, взятый с сайта(ФСА или nsi) на сайте проверки ГОСТ.
-     Добавить в словарь вывод о статусе ГОСТ."""
-
-    # Сокращения для ключей
-    product = 'Наименование документа product'
-    standard = "Обозначение стандарта, нормативного документа product"
-
-    # Проверяем взяты ли данные с сайта с тех полей, где могут содержаться номера ГОСТ.
-    if product in data or standard in data:
-
-        # Берем непосредственно текст, в котором может быть номер ГОСТ.
-        if product in data and standard in data:
-            text = data[product] + ' ' + data[standard]
-        elif product in data:
-            text = data[product]
-        elif standard in data:
-            text = data[standard]
-
-        # Ищем подстроки, совпадающие с паттерном ГОСТ.
-        pattern_gost = r"ГОСТ\s\b\d{4,5}-\d{2,4}\b"
-        result = set(re.findall(pattern_gost, text))
-        status_gost = set()  # Переменная для сбора статусов ГОСТ.
-
-        if result:  # Если в тексте ГОСТ есть, ввести и проверить на сайте.
-
-            for gost_number in result:  # Перебираем ГОСТы.
-                needed_element = wait_.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['gost_input_field'])))
-                needed_element.clear()
-                needed_element.send_keys('ГОСТ ' + gost_number)  # Ввести номер ГОСТ
-                button_search = wait_.until(EC.element_to_be_clickable(
-                    (By.XPATH, X_PATHS['gost_search_button'])))
-                button_search.click()  # Нажать найти
-                # Сохранить статус ГОСТа на сайте.
-                try:
-                    element = wait_.until(EC.element_to_be_clickable(
-                        (By.XPATH, X_PATHS['gost_status'])))
-                    text = element.text
-                    status_gost.add(text)
-                    data['Статус НД'] = " ".join(status_gost)  # Сохранить значения с сайта ГОСТ
-                except:
-                    data['Статус НД'] = 'Информация о стандарте не найдена.'
-
-        else:  # Если данных о ГОСТе нет.
-            data['Статус НД'] = '-'
-
-    return data
-
-
-##################################################################################
-# Работа с сайтом nsi - проверка свидетельства о гос.регистрации
-##################################################################################
-def _get_dict_from_text_nsi(text: str, type_of_org: str) -> dict:
-    """
-    Функция формирует из текста с сайта nsi словарь данных по юридическому лицу.
-
-    Функция принимает на вход строку, взятую с сайта НСИ, с данными, относящимися
-    к юридическому лицу, а также тип юридического лица.
-    С помощью паттернов - регулярных выражений, ищем в тексте
-    наименование, адрес и ОГРН. С помощью ветвей if/else предусмотрены и обрабатываются
-    различные варианты указания искомых данных.
-    """
-    data = {}  # Словарь для возврата данных.
-
-    # Паттерн для поиска наименования юридического лица.
-    pattern_name = r'^.*?\"(.*?)\"'
-    # Паттерн для поиска почтового индекса.
-    pattern_index = r'\d{6}'
-    # Паттерн для поиска адреса в квадратных скобках.
-    pattern_address_paren = r'\[_ЮРАДРЕС_:_([^_]+)_\]'
-
-    # Ищем наименование юридического лица и сохраняем в данные.
-    name_match = re.match(pattern_name, text)
-    if name_match:
-        data[f'Сокращенное наименование юридического лица {type_of_org}'] = name_match.group()
-    else:
-        data[f'Сокращенное наименование юридического лица {type_of_org}'] = text
-        data[f'Адрес места нахождения {type_of_org}'] = text
-        data[f'ОГРН {type_of_org}'] = 'Нет ОГРН'
-        return data
-
-    # Ищем адрес в квадратных скобках и индекс.
-    address_paren_match = re.search(pattern_address_paren, text)
-    index_match = re.search(pattern_index, text)
-
-    if address_paren_match:
-        data[f'Адрес места нахождения {type_of_org}'] = address_paren_match.group(1)
-
-    # Если нет адреса в квадратных скобках, то пытаемся найти адрес по почтовому индексу.
-    elif index_match:
-        data[f'Адрес места нахождения {type_of_org}'] = text[index_match.start():text.find('[')]
-
-    elif len(text) > len(name_match.group()):
-        data[f'Адрес места нахождения {type_of_org}'] = text[name_match.end():text.find('[')]
-    else:
-        data[f'Адрес места нахождения {type_of_org}'] = '-'
-
-    # Ищем ОГРН
-    pattern_ogrn = r'\d{13}'  # Паттерн для поиска ОГРН.
-    ogrn = re.search(pattern_ogrn, text)
-
-    if isinstance(ogrn, NoneType):
-        data[f'ОГРН {type_of_org}'] = 'Нет ОГРН'
-    else:
-        data[f'ОГРН {type_of_org}'] = ogrn.group()
-
-    return data
-
-
-def get_data_from_nsi_web(document_number, browser_, wait_) -> None | dict:
-    """Собрать данные по свидетельству о государственной регистрации с сайта nsi.
-    Вернет либо словарь, достаточный для добавления и последующей записи, либо None"""
-
-    # Найти и нажать на кнопку фильтра - после которой можно ввести номер СГР
-    filter_button = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['nsi_filter'])))
-    filter_button.click()
-
-    # Дождаться возможности ввода номера СГР.
-    input_number_field = wait_.until(EC.element_to_be_clickable(
-        (By.XPATH, X_PATHS['nsi_input_field'])))
-    input_number_field.clear()
-    input_number_field.send_keys(document_number)  # Ввести номер СГР
-
-    # Нажать на галочку - запустить поиск.
-    check_mark = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['nsi_check_mark'])))
-    check_mark.click()
-
-    # Дождаться загрузки страницы - исчезновения элемента: затемнения на дисплее.
-    loaded = False
-    while not loaded:
-        try:
-            time.sleep(0.06)
-            browser_.find_element(By.CLASS_NAME, 'p-datatable-loading-overlay')
-        except NoSuchElementException:
-            loaded = True
-
-    # Проверяем есть ли данные. Если данных нет, то будет соответсвующее сообщение на странице.
+from monitoring.constants import (PATH_TO_DRIVER, Files, COLUMNS_FOR_RESULT_DF,
+                                  DIR_CURRENT_MONTHLY_MONITORING, RusProfileXPaths, Urls)
+from monitoring.scrappers import FSADeclarationScrapper, FSACertificateScrapper, SgrScrapper
+
+
+def make_browser(number_of_iteration: int):
+    """ Создать экземпляр браузера со всеми необходимыми параметрами. """
+    service = Service(PATH_TO_DRIVER)
+    service.start()
+    options = webdriver.ChromeOptions()
+    options.add_argument("--window-size=1920,1080")
+    if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
+        options.add_argument(f'--proxy-server={PROXY}')
+    # options.add_argument('--headless')
+    ua = UserAgent()
+    user_agent = ua.random
+    options.add_argument(f'--user-agent={user_agent}')
+    browser = webdriver.Chrome(service=service, options=options)
+    return browser
+
+
+def make_wait(browser, time_of_expectation):
+    """ Создать экземпляр объекта wait. """
+    wait = WebDriverWait(browser, time_of_expectation)
+    return wait
+
+
+def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
+    """Собрать и вернуть из файла уже проверенных документов
+    словарь из ключей: ОГРН и значений: адресов юридических лиц."""
     try:
-        data_on_nsi = browser_.find_element(By.XPATH, X_PATHS['nsi_no_data']).text
-        if data_on_nsi == 'Нет данных':
-            data = BLANK_DICT_FOR_FILLING
-            data['Статус на сайте'] = 'Нет на сайте'
-            return data
-
-    except NoSuchElementException:  # Если сообщение об отсутствии данных не найдено, то продолжить.
-        pass
-
-    # Создаем словарь с данными по СГР. Сохраняем первую пару ключ - значение.
-    data = {'Статус на сайте': wait_.until(EC.element_to_be_clickable(
-        (By.XPATH, X_PATHS['nsi_status']))).text}
-
-    # Добавляем в data данные по заявителю, производителю, документации и по остальным ключам.
-    text_applicant = wait_.until(EC.presence_of_element_located(
-        (By.XPATH, X_PATHS['nsi_applicant']))).text
-    data.update(_get_dict_from_text_nsi(text_applicant, 'applicant'))
-
-    text_manufacturer = wait_.until(EC.presence_of_element_located(
-        (By.XPATH, X_PATHS['nsi_manufacturer']))).text
-    data.update(_get_dict_from_text_nsi(text_manufacturer, 'manufacturer'))
-
-    data['Наименование документа product'] = wait_.until(
-        EC.presence_of_element_located((By.XPATH, X_PATHS['nsi_document_name']))).text
-
-    if data:
-        data['Наличие ДОС'] = 'Да'
-        data['Соответствие с сайтом'] = 'Соответствует'
-
-    return data
-
-
-##################################################################################
-# Небольшие вспомогательные функции.
-##################################################################################
-def make_new_tab(browser_, url: str):
-    """Открыть новое окно в браузере с определенным
-    сайтом и вернуть указатель на него."""
-    browser_.switch_to.new_window('tab')
-    browser_.get(url)
-    time.sleep(random.randint(1, 3))
-    return browser_.current_window_handle
-
-
-def make_new_tab_rusprofile(browser_, wait_, url: str):
-    """Открыть новое окно в браузере с определенным
-    сайтом и вернуть указатель на него."""
-    browser_.switch_to.new_window('tab')
-    browser_.get(url)
-    time.sleep(random.randint(1, 3))
-    time.sleep(10)
-    needed_element = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_first_input'])))
-    needed_element.send_keys('1153316153715')  # Ввести ОГРН
-    # pyautogui.hotkey('enter')
-    search_button = wait_.until(EC.element_to_be_clickable((By.XPATH, X_PATHS['rusprofile_first_search_button'])))
-    search_button.click()
-
-    return browser_.current_window_handle
-
-
-def make_all_required_tabs(browser_, wait_) -> dict:
-    """Создать все 5 необходимых вкладок в браузере."""
-    tabs = {
-        'declaration': make_new_tab(browser_, URL_FSA_DECLARATION),
-        'certificate': make_new_tab(browser_, URL_FSA_CERTIFICATE),  # Сертификаты.
-        # 'egrul': make_new_tab(browser_, URL_EGRUL),  # ЕГРЮЛ
-        'rusprofile': make_new_tab_rusprofile(browser_, wait_, URL_RUSPROFILE),  # ГОСТ
-        'gost': make_new_tab(browser_, URL_GOST),  # ГОСТ
-        'nsi': make_new_tab(browser_, URL_NSI),  # СГР
-    }
-    return tabs
-
-
-def make_dict_ogrn_address(file: str) -> dict:
-    """Собрать и вернуть словарь из ключей: ОГРН и значений: адресов юридических лиц."""
-    try:
-        df = pd.read_excel(file)
+        df = pd.read_excel(result_file)
     except FileNotFoundError:
         return {}
-    dict_ = {}
+    ogrn_and_addresses = {}
     for _, row in df.iterrows():
-        dict_[row['ОГРН заявителя']] = row['Адрес заявителя']
-        dict_[row['ОГРН изготовителя']] = row['Адрес изготовителя']
-    return dict_
+        ogrn_and_addresses[row['ОГРН заявителя']] = row['Адрес заявителя']
+        ogrn_and_addresses[row['ОГРН изготовителя']] = row['Адрес изготовителя']
+    if 'Нет ОГРН' in ogrn_and_addresses.keys():
+        del ogrn_and_addresses['Нет ОГРН']
+    return ogrn_and_addresses
 
 
-def define_type_of_doc(number: str) -> str | None:
-    """Проверить номер декларации из xlsx файла и определить какой тип документа."""
-    pattern_declaration1 = r'(ЕАЭС N RU Д-[\w\.]+)'
-    pattern_declaration2 = r'(РОСС RU Д-[\w\.]+)'
-    pattern_declaration3 = r'(ТС N RU Д-[\w\.]+)'
-    pattern_certificate = r'(ЕАЭС RU С-[\w\.]+)'
-    pattern_nsi = r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}'
-
-    if re.match(pattern_declaration1, number) or re.match(pattern_declaration2, number) or re.match(pattern_declaration3, number):
-        return 'declaration'
-    if re.match(pattern_certificate, number):
-        return 'certificate'
-    if re.match(pattern_nsi, number):
-        return 'nsi'
-
-    return None
+def make_copy_of_file_in_process(dir_month, dir_type_of_stage, row_name, old_df, new_df, columns):
+    """ Сделать копию файла"""
+    return_or_create_dir(r'./%s/%s' % (dir_month, dir_type_of_stage))
+    copy_xlsx_file = r'./%s/%s/copy_lane_%s.xlsx' % (dir_month, dir_type_of_stage, row_name)
+    total_df = pd.concat([old_df, new_df])
+    with pd.ExcelWriter(copy_xlsx_file, engine="openpyxl", mode='w') as writer:
+        total_df.to_excel(writer, index=False, columns=columns)
 
 
-def make_series_for_result(data: dict) -> pd.Series:
-    """Создать Series для добавления в лист мониторинга."""
-    data['ФИО'] = 'Код'
-    data['Дата проверки'] = datetime.now().strftime('%d.%m.%Y-%H.%M.%S')
-    list_for_series = []
-    for title in TITLE_FOR_SERIES_TO_FINAL_DF:
-        if title in data:
-            list_for_series.append(data[title])
-        else:
-            list_for_series.append('-')
-
-    series = pd.Series(list_for_series, index=COLUMNS_FOR_FINAL_DF[7:])
-
-    return series
-
-
-def return_existing_result_file_or_create_new(file: str) -> str:
-    """Проверить есть ли xlsx файл для временного хранения данных,
-    если да - открыть его, если нет_ создать."""
-    if os.path.isfile(file):
-        return file
-    df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])
-    df.to_excel(file)
-
-    return file
-
-
-##################################################################################
-# Класс для работы с сайтом ФСА.
-##################################################################################
-class FSAScrapper:
-    """Класс для сбора данных с сайта ФСА."""
-
-    def __init__(self, browser_, wait_):
-        """Инициация объекта. Принимает browser, wait"""
-        self.browser = browser_
-        self.wait = wait_
-        self.chapter_xpath = X_PATHS['fsa_chapter']
-        self.required_keys = REQUIRED_KEYS_TO_FSA
-
-    def input_document_number(self, document_number: str):
-        """Открыть страницу с полем для ввода номера документа,
-        ввести номер декларации, нажать на кнопку 'найти'."""
-        input_number_document = self.wait.until(EC.presence_of_element_located(
-            (By.XPATH, X_PATHS['fsa_input_field'])))
-        input_number_document.clear()
-        input_number_document.send_keys(document_number)
-        button_search = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, X_PATHS['fsa_search_button'])))
-        button_search.click()
-        request_time = time.time()
-        return request_time
-
-    def pick_needed_document_in_list(self, document_number: str, expiration_date: str):
-        """Обновить браузер, дождаться список документов,
-        кликнуть по нужному документу в списке."""
-
-        document_number = document_number.strip()
-        expiration_date = expiration_date[:6] + '20' + expiration_date[6:]
-        self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, X_PATHS['fsa_pick_document'].format(row=1, column=3))))
-
-        try:
-            i = 2
-            while True:
-                doc_number_fsa = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, X_PATHS['fsa_pick_document'].format(row=i, column=3))))
-                doc_number_fsa_text = doc_number_fsa.text.strip()
-                expiration_date_fsa = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, X_PATHS['fsa_pick_document'].format(row=i, column=4))))
-                expiration_date_fsa = expiration_date_fsa.text.strip()
-                if doc_number_fsa_text == document_number and expiration_date_fsa == expiration_date:
-                    doc_number_fsa.click()
-                    return True
-                i += 1
-
-        except TimeoutException:
-            return False
-
-    def return_to_input_document_number(self, xpath) -> None:
-        """После сохранения данных по декларации нажать на возврат
-        для ввода следующего номера декларации."""
-        back_to_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
-        back_to_input.click()
-
-    def get_inner_elements(self, chapter) -> dict:
-        """Собрать внутренние элементы на веб-странице. Для которых
-        недостаточно метода get_data_on_document_by_columns"""
-        inner_elements = {}
-        self.wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME,
-                                                             'card-edit-row__content')))
-        keys = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__header')
-        values = self.browser.find_elements(By.CLASS_NAME, 'card-edit-row__content')
-        for key, value in zip(keys, values):
-            inner_elements[key.text + ' ' + chapter] = value.text
-        return inner_elements
-
-    def get_data_on_document(self, type_of_doc: str) -> dict:
-        """Собрать с WEB страницы данные в словарь по определенным в шаблоне
-         колонкам."""
-
-        try:  # Пытаемся найти статус документа.
-            status = self.wait.until(EC.presence_of_element_located(
-                (By.XPATH, X_PATHS['fsa_doc_status']))).text
-        except TimeoutException:
-            status = 'Статус не найден на ФСА'
-
-        if status != 'ДЕЙСТВУЕТ':  # Любой статус кроме ДЕЙСТВУЕТ
-            data = {'Статус на сайте': status}
-            data.update(BLANK_DICT_FOR_FILLING)
-            if type_of_doc == 'declaration':
-                self.return_to_input_document_number(X_PATHS['fsa_return_declaration'])
-            else:
-                self.return_to_input_document_number(X_PATHS['fsa_return_certificate'])
-            return data
-
-        # Для действующей декларации.
-        data = {'Статус на сайте': self.wait.until(EC.presence_of_element_located(
-            (By.XPATH, X_PATHS['fsa_doc_status']))).text}
-        # Определяем номер последней главы - количество итераций для сбора данных.
-        elements = self.wait.until(EC.presence_of_all_elements_located(
-            (By.XPATH, X_PATHS['fsa_last_iter'])))
-        number_of_last_chapter = len(elements)  # Номер последней итерации.
-
-        # Перебираем и кликаем по подразделам на странице.
-        for item in range(1, number_of_last_chapter + 1):
-            time.sleep(random.randint(1, 3))
-            data = self.get_data_from_one_chapter(data, item, type_of_doc)
-
-        # Возвращение на страницу для ввода номера документа.
-        if type_of_doc == 'declaration':
-            self.return_to_input_document_number(X_PATHS['fsa_return_declaration'])
-        else:
-            self.return_to_input_document_number(X_PATHS['fsa_return_certificate'])
-
-        if data:
-            data['Наличие ДОС'] = 'Да'
-            data['Соответствие с сайтом'] = 'Соответствует'
-
-        return data
-
-    def get_data_from_one_chapter(self, data, item, type_of_doc):
-        """Собрать данные с одного подраздела на сайте ФСА."""
-        # Кликаем слева по подразделу.
-        needed_chapter = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, self.chapter_xpath + f'[{item}]/a')))
-        needed_chapter.click()
-        # Имя подзаголовка, берем из ссылки перед нажатием.
-        chapter = needed_chapter.get_attribute('href')
-        chapter = chapter[chapter.rfind('/') + 1:]
-        # Собираем данные со страницы.
-        headers = self.browser.find_elements(By.CLASS_NAME, "info-row__header")  # Ключи
-        texts = self.browser.find_elements(By.CLASS_NAME, "info-row__text")  # Значения
-
-        # Преобразуем данные в словарь.
-        for header, text in zip(headers, texts):
-            key = header.text.strip()
-            # Берем только те ключи и значения, который в списке необходимых колонок.
-            if key in self.required_keys:
-                value = text.text.strip()
-                # Если ключ уже в словаре, то добавляем к ключу строку - название подраздела.
-                if key == ('Основной государственный регистрационный '
-                           'номер юридического лица (ОГРН)'):
-                    data['ОГРН' + ' ' + chapter] = value
-                else:
-                    data[key + ' ' + chapter] = value
-            continue
-
-        # Для сертификатов изъятие данных отличается. Собираются внутренние элементы.
-        if chapter in {'applicant', 'manufacturer'} and type_of_doc == 'certificate':
-            inner_data = self.get_inner_elements(chapter)
-            data.update(inner_data)
-        return data
-
-    def get_data_from_fsa(self, doc_number, expiration_date, type_of_doc, tabs):
-        """Общий метод диспетчер для деклараций и сертификатов."""
-        # Переключаемся на соответсвующее окно в соответствии от типа документа.
-        if type_of_doc == 'declaration':
-            self.browser.switch_to.window(tabs['declaration'])
-        elif type_of_doc == 'certificate':
-            self.browser.switch_to.window(tabs['certificate'])
-
-        # На сайте вводим номер декларации.
-        request_time = self.input_document_number(doc_number)
-        time.sleep(random.randint(1, 3))
-
-        # Выбираем нужный документ.
-        picked = self.pick_needed_document_in_list(doc_number, expiration_date)
-        if picked is True:
-            data = self.get_data_on_document(type_of_doc)  # Данные ФСА.
-            return data, request_time
-
-        return {'Статус на сайте': "Статус не найден на ФСА"}, request_time
-
-
-##################################################################################
-# Главная функция для работы с сайтами через браузер.
-##################################################################################
-def checking_data_in_iteration_through_browser(
-        input_file: str, output_file: str, browser_, wait_) -> None:
-    """
-    Проверка данных на интернет ресурсах.
-
-    Открывает файл excel с данными после проверки в ГОЛД, определяет откуда продолжать проверку,
-    читает построчно, берет номер документа, определяет тип документа,
-    исходя из типа, собирает данные с сайтов ФСА, СГР, вызывая при этом
-    соответствующую функцию или метод. Также добавляет к данным
-    сведения с ЕГРЮЛ и по ГОСТ. Полученные с интернет ресурсов данные добавляет к
-    данным из ГОЛД, создает Series который добавляет к новому DataFrame записывает его в файл.
-    Также отслеживает количество обращений к сайту ФСА и в случае превышения 20 раз,
-    вызывает исключение, на которое внешняя функция закрывает браузер и
-    открывает браузер с новыми фейковыми данными.
-    Также отслеживает время, прошедшее с последнего запроса к сайту ФСА.
-    """
-
-    # Итоговый файл проверяем есть ли он или нет, если нет, то создаем.
-    output_file = return_existing_result_file_or_create_new(output_file)
-
-    gold_df = pd.read_excel(input_file)  # Данные из xlsx после ГОЛД
-    old_df = pd.read_excel(output_file)  # DataFrame из уже проверенных в WEB данных.
-    new_df = pd.DataFrame(columns=[COLUMNS_FOR_FINAL_DF])  # Новый DataFrame, для конечного результата
-    # Словарь из ОГРН и адресов.
-    dict_ogrn_address = make_dict_ogrn_address(output_file)
-
-    # Определяем последнюю проверенную из ГОЛД файла строку.
+def check_if_everything_is_checked_in_web(gold_file: str, result_file: str) -> bool | None:
+    """ Проверка, проверены ли все номера в ГОЛД. """
     try:
-        last_row_name_from_gold = read_last_viewed_number_from_file(VIEWED_IN_FSA_NUMBERS)
-        if last_row_name_from_gold is None:
-            last_row_name_from_gold = 0
-    except:
-        last_row_name_from_gold = 0
+        gold_df = pd.read_excel(gold_file)
+        result_df = pd.read_excel(result_file)
+        if len(result_df) != 0 and gold_df.iloc[-1].name == result_df.iloc[-1].name:
+            log_to_file_info("Окончание работы с ГОЛД'")
+            return True
+        return False
+    except (KeyError, FileNotFoundError):
+        return None
 
-    # Создаем в браузере 5 вкладок для попеременной работы с сайтами.
-    tabs = make_all_required_tabs(browser_, wait_)  # Словарь вкладок
-    times = 0  # Количество обращений к сайту ФСА.
-    request_time = 0  # Прошедшее с последнего запроса к сайту ФСА время.
 
-    try:
-        # Через цикл перебираем строки в ГОЛД файле.
-        for _, row in gold_df.iloc[last_row_name_from_gold:].iterrows():
+class BrowserWorker:
+    """ Задача - работа с браузером."""
+    def __init__(self, browser, wait):
+        self.browser = browser
+        self.wait = wait
 
-            if row.name % 500 == 0:
-                copy_xlsx_file = r'./%s/copies_of_web/copy_lane_%s.xlsx' % (DIR_CURRENT_MONTH_AND_YEAR, row.name)
-                total_df = pd.concat([old_df, new_df])
-                with pd.ExcelWriter(copy_xlsx_file, engine="openpyxl", mode='w') as writer:
-                    total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
+    def switch_to_tab(self, tab):
+        self.browser.switch_to.window(tab)
 
-            # Если более 20 раз обращались к сайту в ФСА, то поднять исключение,
-            # открыть новый браузер с новыми фейковыми данными.
-            if times > 20:
-                raise MaxIterationException
+    def make_new_tab(self, url: str):
+        """ Открыть новую вкладку"""
+        self.browser.switch_to.new_window('tab')
+        self.browser.get(url)
+        return self.browser.current_window_handle
 
-            data = {}
-            doc_number = row['ДОС']  # Номер документа из DataFrame из ГОЛД
-            expiration_date = row['Дата окончания']
-            # Прогоняем через паттерны, определяем тип документа.
-            type_of_doc = define_type_of_doc(doc_number)
+    def wait_until_element_to_be_clickable(self, xpath):
+        """ Найти и вернуть элемент на странице """
+        searched_element = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+        return searched_element
 
-            # Если номер документа не ФСА и не СГР
-            if type_of_doc is None:
-                data['Статус на сайте'] = '-'
-            # Если тип документа СГР
-            elif type_of_doc == 'nsi':
-                browser_.switch_to.window(tabs['nsi'])
-                data = get_data_from_nsi_web(doc_number, browser_, wait_)
-            # Если тип документа ФСА
-            elif type_of_doc in {'declaration', 'certificate'}:
-                # Высчитываем время, прошедшее с последнего обращения к сайту ФСА.
-                time_from_last_request = time.time() - request_time
-                # Проверяем прошло ли 15 секунд.
-                if time_from_last_request < 15:
-                    time.sleep(15 - time_from_last_request)
-                # Собираем данные по декларации с сайта ФСА.
-                fsa_scrapper = FSAScrapper(browser_, wait_)
-                data, request_time = fsa_scrapper.get_data_from_fsa(doc_number, expiration_date, type_of_doc, tabs)
-                times += 1  # Увеличиваем счетчик обращения к сайту ФСА
+    def wait_until_element_to_be_located(self, xpath):
+        """ Найти и вернуть элемент на странице """
+        searched_element = self.wait.until(EC.element_located_to_be_selected((By.XPATH, xpath)))
+        return searched_element
 
-            # Если статус документа 'рабочий'(действующий),
-            # то собрать и добавить данные с ЕГРЮЛ и ГОСТ.
-            if data['Статус на сайте'] in {'ДЕЙСТВУЕТ', 'подписан и действует'}:
-                data, dict_ogrn_address = add_to_data_egrul_information(
-                    data, tabs, dict_ogrn_address, browser_, wait_)  # ЕГРЮЛ
-                data = add_to_data_gost_information(data, tabs, browser_, wait_)  # ГОСТ
+    def wait_until_all_elements_located_by_xpath(self, xpath):
+        """ Найти и вернуть элемент на странице """
+        searched_element = self.wait.until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+        return searched_element
 
-            # Формируем Series с собранными данными и добавляем его в DataFrame.
-            new_series = make_series_for_result(data)
-            new_row = row._append(new_series)  # Объединяем со старым Series
-            new_df = new_df._append(new_row, ignore_index=True)  # Добавляем в DF
+    def wait_until_all_elements_located_by_class(self, class_name):
+        """ Найти и вернуть элемент на странице """
+        searched_elements = self.wait.until(EC.presence_of_all_elements_located((By.XPATH, class_name)))
+        return searched_elements
 
+    def find_an_element_by_class(self, class_name):
+        element = self.browser.find_element(By.CLASS_NAME, class_name)
+        return element
+
+    def find_an_element_by_xpath(self, xpath):
+        element = self.browser.find_element(By.XPATH, xpath)
+        return element
+
+    def find_elements_by_class(self, class_name):
+        elements = self.browser.find_elements(By.CLASS_NAME, class_name)
+        return elements
+
+    def input_in_field(self, xpath_input_field: str, value: str):
+        input_field = self.wait_until_element_to_be_clickable(xpath_input_field)
+        input_field.clear()
+        input_field.send_keys(value)
+
+    def wait_and_click_element(self, xpath: str):
+        element = self.wait_until_element_to_be_clickable(xpath)
+        element.click()
+        return element
+
+    def wait_and_press_element_through_chain(self, xpath: str):
+        element = self.wait_until_element_to_be_clickable(xpath)
+        ActionChains(self.browser).move_to_element(element).click().perform()
+        return element
+
+    def input_in_field_and_press_search_button(self, xpath_input_field: str,
+                                               value: str, xpath_search_button: str):
+        self.input_in_field(xpath_input_field, value)
+        self.wait_and_click_element(xpath_search_button)
+
+    def get_text_from_element_by_xpath(self, xpath: str):
+        element = self.wait_until_element_to_be_clickable(xpath)
+        text_from_element = element.text.strip()
+        return text_from_element
+
+    def get_text_from_element_by_class(self, class_name: str):
+        element = self.wait.until(EC.element_to_be_clickable((By.CLASS_NAME, class_name)))
+        text_from_element = element.text.strip()
+        return text_from_element
+
+    def refresh_browser(self):
+        self.browser.refresh_browser()
+
+    def refresh_browser_by_hotkey(self):
+        pyautogui.hotkey('ctrl', 'r')
+
+    def chain_move_and_click(self, element):
+        ActionChains(self.browser).move_to_element(element).click().perform()
+
+
+class RequiredTabsWorker(BrowserWorker):
+    """Задача - открытие нужных для работы мониторинга вкладок."""
+    def __init__(self, browser, wait):
+        super().__init__(browser, wait)
+        self.tabs = self.make_all_required_tabs()
+
+    def make_rusprofile_tab(self, url: str):
+        self.browser.switch_to.new_window('tab')
+        self.browser.get(url)
+        time.sleep(random.randint(1, 4))
+        self.input_in_field_and_press_search_button(
+            RusProfileXPaths.FIRST_INPUT_FIELD.value, '1153316153715',
+            RusProfileXPaths.FIRST_SEARCH_BUTTON.value)
+        return self.browser.current_window_handle
+
+    def make_all_required_tabs(self) -> dict:
+        """Создать все 5 необходимых вкладок в браузере."""
+        tabs = {'declaration': self.make_new_tab(Urls.FSA_DECLARATION.value),
+                'certificate': self.make_new_tab(Urls.FSA_CERTIFICATE.value),
+                'nsi': self.make_new_tab(Urls.NSI.value),
+                'rusprofile': self.make_rusprofile_tab(Urls.RUSPROFILE.value),
+                'gost': self.make_new_tab(Urls.GOST.value)}
+        return tabs
+
+
+class WebMonitoringWorker:
+
+    def __init__(self, gold_file, result_file, file_for_last_number, browser_worker=RequiredTabsWorker):
+
+        self.gold_file = gold_file
+        self.result_file = result_file
+
+        self.gold_df = pd.read_excel(gold_file)
+        self.already_checked_df = pd.read_excel(return_or_create_xlsx_file(result_file))
+        self.new_df = return_or_create_new_df(result_file, columns=[COLUMNS_FOR_RESULT_DF])
+
+        self.ogrn_and_addresses = make_and_return_ogrn_and_addresses(self.result_file)
+        self.last_checked_in_web_number = read_last_viewed_number_from_file(file_for_last_number)
+        self.number_of_iteration = 0
+        self.request_time = 0
+
+        browser = make_browser(self.number_of_iteration)
+        wait = make_wait(browser, 30)
+        self.browser_worker = browser_worker(browser, wait)
+
+    def make_copy_of_web_file(self, row_name):
+        """ Сделать копию итогового файла"""
+        make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING, 'copies_of_web', row_name,
+                                     self.already_checked_df, self.new_df, COLUMNS_FOR_RESULT_DF)
+
+    def write_df_and_last_checked_number_in_files(self):
+        total_df = pd.concat([self.already_checked_df, self.new_df])
+        total_df.to_excel(self.result_file, index=False)
+        write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value, self.last_checked_in_web_number)
+
+    def determine_type_of_doc(self, number) -> type | None:
+        """ Определить тип документа. """
+        patterns = {
+            r'(ЕАЭС N RU Д-[\w\.]+)': FSADeclarationScrapper,
+            r'(РОСС RU Д-[\w\.]+)': FSADeclarationScrapper,
+            r'(ТС N RU Д-[\w\.]+)': FSADeclarationScrapper,
+            r'(ЕАЭС RU С-[\w\.]+)': FSACertificateScrapper,
+            r'(РОСС RU С-[\w\.]+)': FSACertificateScrapper,
+            r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}': SgrScrapper}
+        for pattern, scrapper_class in patterns.items():
+            if re.match(pattern, number):
+                return scrapper_class
+        return None
+
+    def collect_data_about_docs_through_for(self) -> None:
+        """ Через цикл перебираем строки в ГОЛД файле и собираем по ним данные. """
+        for _, row in self.gold_df.iloc[self.last_checked_in_web_number:].iterrows():
+
+            # Делаем копию на каждую 500 строку.
+            if row.name % 500 == 0 and row.name != 0:
+                self.make_copy_of_web_file(row.name)
+
+            document = Document()
+            document.convert_and_save_attrs_from_gold(dict(row))
+
+            # По паттернам определяем тип документа и создаем объект определенного scrapper
+            scrapper_by_type_of_doc = self.determine_type_of_doc(document.number)
+            if not scrapper_by_type_of_doc:  # Для не подпадающего под паттерны.
+                continue
+
+            scrapper = scrapper_by_type_of_doc(self.browser_worker, document)
+            elapsed_time = time.time() - self.request_time
+            if scrapper == FSADeclarationScrapper or scrapper == FSACertificateScrapper and elapsed_time < 45:
+                time.sleep(45 - elapsed_time)
+            scrapper.process_get_data_on_document()
+
+            try:
+                self.request_time = scrapper.request_time
+            except AttributeError:
+                pass
+
+            self.new_df = self.new_df._append(scrapper.document.convert_document_to_pd_series(), ignore_index=True)  # Добавляем в DF
+            self.last_checked_in_web_number = row.name
         # При нормальной работе цикла записать последнюю строку.
-        write_last_viewed_number_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+        write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value, self.last_checked_in_web_number)
         # Если была последняя строка из ГОЛД файла выйти из кода.
-        if row.name == gold_df.iloc[-1].name:
+        if self.last_checked_in_web_number == self.gold_df.iloc[-1].name:
             sys.exit()
 
-    except (TimeoutException, EgrulCaptchaException, ElementClickInterceptedException,
-            StaleElementReferenceException, MaxIterationException, NoSuchWindowException,
-            KeyboardInterrupt) as e:
-        log_to_file_error(e.msg)
-        raise StopBrowserException
-
-    finally:
-        # Записать новый DataFrame и последнюю строку из голда в файлы.
-        total_df = pd.concat([old_df, new_df])
-        with pd.ExcelWriter(output_file, engine="openpyxl", mode='w') as writer:
-            total_df.to_excel(writer, index=False, columns=COLUMNS_FOR_FINAL_DF)
-        write_last_viewed_number_to_file(VIEWED_IN_FSA_NUMBERS, row.name)
+    def process_get_data_through_for(self):
+        try:
+            self.collect_data_about_docs_through_for()
+        except Exception as error:
+            log_to_file_error(error)
+        finally:
+            self.write_df_and_last_checked_number_in_files()
 
 
-def launch_checking(range_: int, input_file: str, output_file: str):
-    """
-    Запуск кода из модуля в цикле.
-
-    Условно внешняя функция для функции checking_data_in_iteration_through_browser.
-    Запускает ее в цикле, каждый раз с новым браузером и данными.
-    """
-
+def launch_checking_in_web(gold_file, result_file, count_of_iterations,
+                           file_for_last_number, browser_worker=RequiredTabsWorker):
+    """ Запуск кода из модуля в цикле."""
     log_to_file_info("Старт проверки данных на интернет ресурсах: ФСА, СГР, ЕГРЮЛ, ГОСТ.")
-    for i in range(range_):
+    for i in range(count_of_iterations):
+        # Проверка все ли проверено в вебе.
+        everything_is_checked = check_if_everything_is_checked_in_web(gold_file, result_file)
+        if everything_is_checked:
+            break
 
         try:
-            # Настройки браузера.
-            service = Service(PATH_TO_DRIVER)
-            service.start()
-            options = webdriver.ChromeOptions()
-            options.add_argument("--window-size=1920,1080")
-            # Подключать прокси на четных итерациях.
-            if i % 2 == 0:
-                options.add_argument(f'--proxy-server={PROXY}')
-
-            options.add_argument('--headless')
-            # Фейковый данные user agent
-            ua = UserAgent()
-            user_agent = ua.random
-            options.add_argument(f'--user-agent={user_agent}')
-            browser = webdriver.Chrome(service=service, options=options)
-            wait = WebDriverWait(browser, 5)
-            log_to_file_info("Старт итерации проверки данных в интернете № %d" % i)
-            # Запуск внутренней функции проверки данных в интернете.
-            checking_data_in_iteration_through_browser(input_file, output_file, browser, wait)
+            monitoring_worker = WebMonitoringWorker(gold_file, result_file,
+                                                    file_for_last_number, browser_worker)
+            monitoring_worker.process_get_data_through_for()
 
         except StopBrowserException as error:
             log_to_file_error(error.msg)
-            browser.quit()  # Закрыть браузер.
             time.sleep(random.randint(1, 3))
+git commit -m "refactoring rewrite monitoring in classes. added  .\constants.py .\document_dataclass.py .\functions_for_work_with_files_and_dirs.py"

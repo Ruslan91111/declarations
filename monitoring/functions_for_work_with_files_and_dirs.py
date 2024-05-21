@@ -1,9 +1,13 @@
 """ Модуль с функциями для работы с файлами, директориями, процессами. """
 import json
 import os
+import random
+import time
 
 import openpyxl
+import pandas as pd
 import psutil
+import py_win_keyboard_layout
 
 from monitoring.logger_config import log_to_file_info
 
@@ -40,6 +44,10 @@ def return_or_create_xlsx_file(xlsx_file: str) -> str:
     if os.path.isfile(xlsx_file):
         return xlsx_file
     workbook = openpyxl.Workbook()
+    # Создаем лист и делаем его видимым
+    sheet = workbook.active
+    sheet.title = "Sheet1"
+    sheet.sheet_view.showGridLines = True
     workbook.save(xlsx_file)
     log_to_file_info("Создан файл %s" % xlsx_file)
     return xlsx_file
@@ -58,3 +66,31 @@ def check_process_in_os(process: str):
         if name == process:
             return proc  # Возвращаем работающий процесс
     return None
+
+
+def terminate_the_proc(process: str) -> None:
+    """ Закрыть переданный процесс."""
+    # Перебираем текущие процессы и ищем нужный нам процесс.
+    for proc in psutil.process_iter():
+        name = proc.name()
+        # Если нужный процесс запущен.
+        if name == process:
+            proc.terminate()
+            break
+
+
+def return_or_create_new_df(df, columns):
+    """Вернуть или создать DataFrame для итогового результата. """
+    if df is None:  # Если файл пустой, создаем DataFrame.
+        new_df = pd.DataFrame(columns=columns)
+    else:  # Если нет, то читаем существующий
+        new_df = pd.read_excel(df)
+    return new_df
+
+
+def change_layout_on_english():
+    py_win_keyboard_layout.change_foreground_window_keyboard_layout(0x04090409)
+
+
+def random_delay_from_1_to_3():
+    time.sleep(random.randint(1, 3))
