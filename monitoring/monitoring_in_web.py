@@ -308,4 +308,3 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
         except StopBrowserException as error:
             log_to_file_error(error.msg)
             time.sleep(random.randint(1, 3))
-git commit -m "refactoring rewrite monitoring in classes. added  .\constants.py .\document_dataclass.py .\functions_for_work_with_files_and_dirs.py"
