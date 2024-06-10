@@ -6,14 +6,14 @@ import re
 import time
 from abc import ABC, abstractmethod
 
-from selenium.common import ElementClickInterceptedException, TimeoutException, NoSuchElementException
+from selenium.common import TimeoutException, NoSuchElementException
 
 
 from monitoring.constants import (PATTERN_GOST, GostXPaths, RusProfileXPaths,
                                   PARTS_TO_BE_REMOVED_FROM_ADDRESS, FsaXPaths,
                                   REQUIRED_KEYS_TO_GET_FROM_FSA, NSIXPaths, PATTERNS_FOR_NSI)
-from monitoring.exceptions import NotLoadedDocumentsOnFsaForNewNumberException, Server403Exception, \
-    ServiceNotAvailableException, DocsForNewNumberNotLoadedException, StopMonitoringException
+from monitoring.exceptions import (NotLoadedDocumentsOnFsaForNewNumberException, Server403Exception,
+                                   StopMonitoringException)
 from monitoring.functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
 from monitoring.logger_config import logger
 from monitoring.document_dataclass import Document
@@ -184,7 +184,6 @@ class FSADeclarationScrapper(BaseScrapper):
 
     def check_that_docs_for_new_number_loaded_on_page(self, timeout=5):
         """ Проверить прогрузились ли документы на новый введенный номер документа. """
-
         start = time.time()
         while time.time() - start < timeout:
             loaded_number_on_site = self.browser_worker.get_text_from_element_by_xpath(
@@ -231,7 +230,6 @@ class FSADeclarationScrapper(BaseScrapper):
             self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
             return False
 
-
     def _get_data_on_document(self) -> dict | None:
         """ Собрать данные по документу. """
         data = {}
@@ -268,26 +266,14 @@ class FSADeclarationScrapper(BaseScrapper):
         self.return_to_input_document_number()
         return data
 
-
     def process_get_data_on_document(self):
-
-        try:
-            data_from_web = self._get_data_on_document()
-            if data_from_web:
-                self.document.save_attrs_from_scrapper(data_from_web)
-                self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
-                self.get_addresses_from_rusprofile_and_make_decision_about_matching()
-                self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
-                self.check_the_validity_of_all_gost_numbers()
-
-        except (Server403Exception, NotLoadedDocumentsOnFsaForNewNumberException) as error:
-            raise StopMonitoringException() from error
-
-        except Exception as error:
-            # Блок для диагностики необработанных исключений
-            print(f"process_get_data_on_document - Непредусмотренное исключение {error}")
-            logger.error(f"process_get_data_on_document - Непредусмотренное исключение {error}")
-            raise StopMonitoringException() from error
+        data_from_web = self._get_data_on_document()
+        if data_from_web:
+            self.document.save_attrs_from_scrapper(data_from_web)
+            self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
+            self.get_addresses_from_rusprofile_and_make_decision_about_matching()
+            self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
+            self.check_the_validity_of_all_gost_numbers()
 
 
 class FSACertificateScrapper(FSADeclarationScrapper):
@@ -318,23 +304,6 @@ class FSACertificateScrapper(FSADeclarationScrapper):
         for key, value in zip(keys, values):
             inner_elements[key.text + ' ' + chapter] = value.text
         return inner_elements
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class SgrScrapper(BaseScrapper):

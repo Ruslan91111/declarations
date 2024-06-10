@@ -2,7 +2,6 @@
 import os
 import shutil
 import sys
-import time
 
 import pandas as pd
 from monitoring.exceptions import FileNotPassedException, FileNotExistingException
@@ -51,7 +50,6 @@ def check_or_create_file_before_checking_in_gold(checking_file):
 
 
 def automatic_launch_program():
-    # try:
     logger.info(" Старт программы мониторинга. ")
     checking_file = get_name_for_matrix_file_on_desktop(MESSAGE_FOR_USER_TO_INPUT_FILE)
     change_layout_on_english()
@@ -64,13 +62,12 @@ def automatic_launch_program():
                            browser_worker=RequiredTabsWorker)
     logger.info("Проверка полностью завершена.")
     # Готовый результат копируем на рабочий стол.
-    destination_file = os.path.join(PATH_TO_DESKTOP, os.path.basename('Результат проверки мониторинга.xlsx'))
+    destination_file = os.path.join(PATH_TO_DESKTOP, os.path.basename(
+        'Результат проверки мониторинга.xlsx'))
     shutil.copyfile(Files.RESULT_FILE.value, destination_file)
     logger.info(f'Файл скопирован на рабочий стол: {destination_file}')
     sys.exit()
 
-    # except Exception as error:
-    #     logger.error(error)
 
 if __name__ == '__main__':
     change_layout_on_english()

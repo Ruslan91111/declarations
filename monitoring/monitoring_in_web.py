@@ -1,8 +1,6 @@
 """
 Модуль работы кода с интернет-ресурсами, а именно, сайтами проверки данных: ФСА, СГР, ГОСТ.
 """
-import random
-import sys
 import time
 import re
 
@@ -11,16 +9,13 @@ import pyautogui
 from fake_useragent import UserAgent
 
 from selenium import webdriver
-from selenium.common import TimeoutException, ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver import ActionChains
 
-from config import PROXY
-from exceptions import NotLoadedDocumentsOnFsaForNewNumberException, Server403Exception, ServiceNotAvailableException, \
-    StopIterationInGoldException, StopMonitoringException, DocsForNewNumberNotLoadedException
+from monitoring.config import PROXY
 from monitoring.document_dataclass import Document
 from monitoring.functions_for_work_with_files_and_dirs import (
     write_last_viewed_number_to_file, read_last_viewed_number_from_file, return_or_create_new_df,
@@ -37,8 +32,8 @@ def make_browser(number_of_iteration: int):
     service.start()
     options = webdriver.ChromeOptions()
     options.add_argument("--window-size=1920,1080")
-    # if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
-    #     options.add_argument(f'--proxy-server={PROXY}')
+    if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
+        options.add_argument(f'--proxy-server={PROXY}')
     # options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
@@ -134,10 +129,6 @@ class BrowserWorker:
     def find_elements_by_class(self, class_name):
         elements = self.browser.find_elements(By.CLASS_NAME, class_name)
         return elements
-
-    # def find_an_element_by_xpath(self, xpath):
-    #     element = self.browser.find_elements(By.XPATH, xpath)
-    #     return element
 
     def find_elements_by_xpath(self, xpath):
         element = self.browser.find_elements(By.XPATH, xpath)
@@ -235,7 +226,6 @@ class WebMonitoringWorker:
             time.sleep(60 - elapsed_time_from_last_request)
 
     def write_df_and_last_checked_number_in_files(self):
-        # total_df = pd.concat([self.already_checked_df, self.new_df])
         self.new_df.to_excel(self.result_file, index=False)
         write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value, self.last_checked_in_web_number)
 
@@ -252,7 +242,6 @@ class WebMonitoringWorker:
             if re.match(pattern, number):
                 return scrapper_class
         return None
-
 
     def collect_data_about_docs_through_for(self) -> None:
         """ Через цикл перебираем строки в ГОЛД файле и собираем по ним данные. """
@@ -274,8 +263,8 @@ class WebMonitoringWorker:
             # Определить какой тип документа и какой сайт нужен.
             scrapper = scrapper_by_type_of_doc(self.browser_worker, document)
 
-            try:
-                scrapper.process_get_data_on_document()  # Сбор данных.
+            try:  # Сбор данных по документу.
+                scrapper.process_get_data_on_document()
 
             except Exception as error:
                 self.write_df_and_last_checked_number_in_files()
@@ -283,8 +272,7 @@ class WebMonitoringWorker:
                 self.browser_worker.browser_quit()
                 break
 
-
-            # Атрибут request_time только у скраперов сайта FSA.
+            # Атрибут request_time только у сборщиков данных сайта FSA.
             if hasattr(scrapper, 'request_time'):
                 self.request_time = scrapper.request_time
 
@@ -292,15 +280,10 @@ class WebMonitoringWorker:
             self.last_checked_in_web_number = row.name
 
 
-
-
-
-
 def launch_checking_in_web(gold_file, result_file, count_of_iterations,
                            file_for_last_number, browser_worker=RequiredTabsWorker):
     """ Запуск кода из модуля в цикле."""
     logger.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, RUSPROFILE, ГОСТ.")
-    error403 = ''
 
     for _ in range(count_of_iterations):
 
@@ -310,7 +293,6 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
         if everything_is_checked:
             logger.info("Все коды продуктов проверены на интернет ресурсах.")
             break
-
         logger.info("Продолжается проверка продуктов на сайтах.")
         monitoring_worker = WebMonitoringWorker(gold_file, result_file, file_for_last_number, browser_worker)
         monitoring_worker.collect_data_about_docs_through_for()
