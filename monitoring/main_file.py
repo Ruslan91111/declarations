@@ -2,14 +2,15 @@
 import os
 import shutil
 import sys
+import time
 
 import pandas as pd
-from monitoring.exceptions import PathNotPassException, FileNotExistingException
+from monitoring.exceptions import FileNotPassedException, FileNotExistingException
 from gold_data_manager import launch_gold_module
 from monitoring.constants import Files, PATH_TO_DESKTOP, MESSAGE_FOR_USER_TO_INPUT_FILE
 from monitoring.functions_for_work_with_files_and_dirs import change_layout_on_english
 from monitoring_in_web import launch_checking_in_web, RequiredTabsWorker
-from logger_config import log_to_file_info
+from logger_config import logger
 
 
 def create_sheet_write_codes_and_names(file_for_checking: str,
@@ -30,24 +31,28 @@ def create_sheet_write_codes_and_names(file_for_checking: str,
 
 def get_name_for_matrix_file_on_desktop(message_for_user: str) -> str:
     """ Наименование файла xlsx, находящегося на рабочем столе."""
-    path_from_user = input(message_for_user)
-    path_from_user = PATH_TO_DESKTOP + path_from_user + '.xlsx'
-    if not path_from_user:
-        raise PathNotPassException
-    if not os.path.isfile(path_from_user):
+    file_from_user = input(message_for_user)
+    path_to_file_from_user = PATH_TO_DESKTOP + file_from_user + '.xlsx'
+    logger.info(f'Передан файл - <{file_from_user}>')
+
+    # Проверки передано ли название файла для проверки и существует ли файл.
+    if not file_from_user:
+        raise FileNotPassedException
+    if not os.path.isfile(path_to_file_from_user):
         raise FileNotExistingException
-    return path_from_user
+    return path_to_file_from_user
 
 
 def check_or_create_file_before_checking_in_gold(checking_file):
+    """ Создать или вернуть файл с данными для проверки в ГОЛД,
+    в котором будут номер в матрице, код и наименование продукта. """
     if not os.path.isfile(Files.BEFORE_GOLD.value):
         create_sheet_write_codes_and_names(checking_file)
-        log_to_file_info("Создан файл %s" % Files.BEFORE_GOLD.value)
-    else:
-        log_to_file_info("Файл %s уже существует." % Files.BEFORE_GOLD.value)
 
 
 def automatic_launch_program():
+    # try:
+    logger.info(" Старт программы мониторинга. ")
     checking_file = get_name_for_matrix_file_on_desktop(MESSAGE_FOR_USER_TO_INPUT_FILE)
     change_layout_on_english()
     check_or_create_file_before_checking_in_gold(checking_file)
@@ -57,15 +62,17 @@ def automatic_launch_program():
                            count_of_iterations=500,
                            file_for_last_number=Files.LAST_VIEWED_IN_WEB_NUMBER.value,
                            browser_worker=RequiredTabsWorker)
-    log_to_file_info("Проверка полностью завершена.")
+    logger.info("Проверка полностью завершена.")
     # Готовый результат копируем на рабочий стол.
     destination_file = os.path.join(PATH_TO_DESKTOP, os.path.basename('Результат проверки мониторинга.xlsx'))
     shutil.copyfile(Files.RESULT_FILE.value, destination_file)
-    log_to_file_info(f'Файл скопирован на рабочий стол: {destination_file}')
-    print(f'Проверка полностью завершена. \nФайл скопирован на рабочий стол: {destination_file}')
+    logger.info(f'Файл скопирован на рабочий стол: {destination_file}')
     sys.exit()
 
+    # except Exception as error:
+    #     logger.error(error)
 
 if __name__ == '__main__':
     change_layout_on_english()
+    # time.sleep(60*40)
     automatic_launch_program()

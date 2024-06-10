@@ -12,8 +12,10 @@ from selenium.common import ElementClickInterceptedException, TimeoutException, 
 from monitoring.constants import (PATTERN_GOST, GostXPaths, RusProfileXPaths,
                                   PARTS_TO_BE_REMOVED_FROM_ADDRESS, FsaXPaths,
                                   REQUIRED_KEYS_TO_GET_FROM_FSA, NSIXPaths, PATTERNS_FOR_NSI)
+from monitoring.exceptions import NotLoadedDocumentsOnFsaForNewNumberException, Server403Exception, \
+    ServiceNotAvailableException, DocsForNewNumberNotLoadedException, StopMonitoringException
 from monitoring.functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
-from monitoring.logger_config import log_to_file_error
+from monitoring.logger_config import logger
 from monitoring.document_dataclass import Document
 
 
@@ -123,45 +125,6 @@ class FSADeclarationScrapper(BaseScrapper):
             self.prepare_number_to_input_on_site(),
             FsaXPaths.SEARCH_BUTTON.value)
 
-    def check_that_docs_for_new_number_loaded_on_page(self, timeout=10):
-        """ Проверить прогрузились ли документы на новый введенный номер документа. """
-        start = time.time()
-        while time.time() - start < timeout:
-            number_for_search = self.browser_worker.get_text_from_element_by_xpath(
-                FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=2, column=3))
-            if number_for_search == self.document.number:
-                return True
-
-    def _search_correct_document_by_number_and_date(self, row):
-        """ Кликнуть по документу, который подходит по дате окончания и номеру.
-         Проверяем загрузились ли на странице сайта документы по новому номеру.
-         Затем ищем, тот документ, который совпадает по номеру и дате истечения.
-         кликаем по нему."""
-        fsa_doc_number = self.browser_worker.get_text_from_element_by_xpath(
-            FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=3))
-        fsa_expiration_date = self.browser_worker.get_text_from_element_by_xpath(
-            FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
-
-        if (fsa_doc_number == self.document.number and
-                fsa_expiration_date == self.document.expiration_date):
-            self.browser_worker.wait_and_click_element(
-                FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
-            self.request_time = time.time()
-            return True
-        return False
-
-    def pick_right_document(self):
-        """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
-        self.check_that_docs_for_new_number_loaded_on_page()
-        picked = False
-        i = 1
-        try:
-            while not picked:
-                picked = self._search_correct_document_by_number_and_date(i)
-                i += 1
-        except TimeoutException as error:
-            log_to_file_error(error.msg)
-
     def return_to_input_document_number(self, xpath=FsaXPaths.RETURN_BACK_DECLARATION.value):
         """ После просмотра документа вернуться на страницу для ввода номера. """
         random_delay_from_1_to_3()
@@ -203,17 +166,97 @@ class FSADeclarationScrapper(BaseScrapper):
         self.document.status_on_site = (
             self.browser_worker.get_text_from_element_by_xpath(FsaXPaths.DOCUMENT_STATUS.value))
 
+    def check_403_error(self) -> bool:
+        """ Проверка нет ли на экране сообщения об ошибке 403."""
+        return bool(self.browser_worker.find_elements_by_xpath(FsaXPaths.ERROR_403.value))
+
+    def check_service_not_available_error(self):
+        """ Проверка нет ли на экране сообщения о недоступности сервиса, если есть кликнуть 'ok'. """
+        start = time.time()
+        while time.time() - start < 2:
+            error = self.browser_worker.find_elements_by_xpath(FsaXPaths.SERVICE_NOT_AVAILABLE.value)
+            if error:
+                logger.error("Ошибка - сообщение на странице: 'Сервис недоступен'.")
+                random_delay_from_1_to_3()
+                self.browser_worker.wait_and_press_element_through_chain(FsaXPaths.SERVICE_NOT_AVAILABLE_OK_BUTTON.value)
+                self.browser_worker.refresh_browser()
+                return None
+
+    def check_that_docs_for_new_number_loaded_on_page(self, timeout=5):
+        """ Проверить прогрузились ли документы на новый введенный номер документа. """
+
+        start = time.time()
+        while time.time() - start < timeout:
+            loaded_number_on_site = self.browser_worker.get_text_from_element_by_xpath(
+                FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=2, column=3))
+            loaded_number_on_site = loaded_number_on_site[loaded_number_on_site.find('.'):]
+            number_from_gold = self.prepare_number_to_input_on_site()
+
+            if loaded_number_on_site == number_from_gold:
+                return True
+        return False
+
+    def _search_correct_document_by_number_and_date(self, row):
+        """ Кликнуть по документу, который подходит по дате окончания и номеру.
+         Проверяем загрузились ли на странице сайта документы по новому номеру.
+         Затем ищем, тот документ, который совпадает по номеру и дате истечения.
+         кликаем по нему."""
+        fsa_doc_number = self.browser_worker.get_text_from_element_by_xpath(
+            FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=3))
+        fsa_expiration_date = self.browser_worker.get_text_from_element_by_xpath(
+            FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
+
+        if (fsa_doc_number == self.document.number and
+                fsa_expiration_date == self.document.expiration_date):
+            self.browser_worker.wait_and_click_element(FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
+            self.request_time = time.time()
+            return True
+
+        return False
+
+    def pick_right_document(self):
+        """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
+
+        picked = False
+        i = 1
+        try:
+            while not picked:
+                picked = self._search_correct_document_by_number_and_date(i)
+                i += 1
+            return True
+
+        except TimeoutException:
+            logger.error(f'Не найдено подходящего по номеру и дате истечения '
+                         f'документа для № {self.document.number} на сайте ФСА.')
+            self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
+            return False
+
+
     def _get_data_on_document(self) -> dict | None:
         """ Собрать данные по документу. """
+        data = {}
+
+        if self.check_403_error():
+            raise Server403Exception('403 на странице')
+
         self.input_document_number()
         random_delay_from_1_to_3()
-        self.pick_right_document()
-        self.save_status_on_site()
 
+        if not self.check_that_docs_for_new_number_loaded_on_page():
+            raise NotLoadedDocumentsOnFsaForNewNumberException(self.document.number)
+
+        picked_doc = self.pick_right_document()
+        self.check_service_not_available_error()
+
+        if picked_doc:
+            self.save_status_on_site()
+
+        if self.document.status_on_site == 'Не найден на сайте, проверьте номер и дату' or not picked_doc:
+            return None
         if self.document.status_on_site != 'ДЕЙСТВУЕТ':
+            self.return_to_input_document_number()
             return None
 
-        data = {}
         # Определяем номер последней главы - количество итераций для сбора данных.
         count_of_iterations = self.find_out_the_number_of_last_chapter()
         # Перебираем и кликаем по подразделам на странице.
@@ -225,21 +268,33 @@ class FSADeclarationScrapper(BaseScrapper):
         self.return_to_input_document_number()
         return data
 
+
     def process_get_data_on_document(self):
-        data_from_web = self._get_data_on_document()
-        if data_from_web:
-            self.document.save_attrs_from_scrapper(data_from_web)
-            self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
-            self.get_addresses_from_rusprofile_and_make_decision_about_matching()
-            self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
-            self.check_the_validity_of_all_gost_numbers()
+
+        try:
+            data_from_web = self._get_data_on_document()
+            if data_from_web:
+                self.document.save_attrs_from_scrapper(data_from_web)
+                self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
+                self.get_addresses_from_rusprofile_and_make_decision_about_matching()
+                self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
+                self.check_the_validity_of_all_gost_numbers()
+
+        except (Server403Exception, NotLoadedDocumentsOnFsaForNewNumberException) as error:
+            raise StopMonitoringException() from error
+
+        except Exception as error:
+            # Блок для диагностики необработанных исключений
+            print(f"process_get_data_on_document - Непредусмотренное исключение {error}")
+            logger.error(f"process_get_data_on_document - Непредусмотренное исключение {error}")
+            raise StopMonitoringException() from error
 
 
 class FSACertificateScrapper(FSADeclarationScrapper):
 
     def __init__(self, browser_worker, document):
         super().__init__(browser_worker, document)
-        self.browser_worker.switch_to_tab(self.browser_worker.tabs['declaration'])
+        self.browser_worker.switch_to_tab(self.browser_worker.tabs['certificate'])
 
     def return_to_input_document_number(self, xpath=FsaXPaths.RETURN_BACK_CERTIFICATION.value):
         """ Вернуться на страницу для ввода номера. """
@@ -263,6 +318,23 @@ class FSACertificateScrapper(FSADeclarationScrapper):
         for key, value in zip(keys, values):
             inner_elements[key.text + ' ' + chapter] = value.text
         return inner_elements
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class SgrScrapper(BaseScrapper):

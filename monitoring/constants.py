@@ -69,6 +69,9 @@ class FsaXPaths(Enum):
     DOCUMENT_STATUS: str = '//fgis-toolbar-status/span'
     DOCUMENT_STATUS_IN_MENU: str = "/*//tbody/tr[2]/td[2]"
     CHAPTER_FOR_LAST_ITERATION: str = '//fgis-links-list/div/ul/li'
+    ERROR_403: str = "//*[contains(text(), '403 Forbidden')]"
+    SERVICE_NOT_AVAILABLE: str = "//*[contains(text(), 'Сервис временно недоступен')]"
+    SERVICE_NOT_AVAILABLE_OK_BUTTON: str = "//*[contains(text(), 'OK')]"
 
 
 class NSIXPaths(Enum):
@@ -85,11 +88,10 @@ class NSIXPaths(Enum):
 
 class RusProfileXPaths(Enum):
     """XPATH для сайта rusprofile - проверка адресов юр.лиц"""
-    FIRST_INPUT_FIELD: str = '//*[@id="indexsearchform"]/div/input'
-    FIRST_SEARCH_BUTTON: str = '//*[@id="indexsearchform"]/button/span'
-    INPUT_FIELD: str = '//*[@id="searchform"]/input[1]'
-    SEARCH_BUTTON: str = '//*[@id="searchform"]/button[2]'
+    INPUT_FIELD: str = "(//input[contains(@placeholder, 'Искать по названию, адресу')])[last()]"
+    SEARCH_BUTTON: str = "(//button[@type='submit'])[last()]"
     ADDRESS_PLACE: str = '//address[@class]'
+    CAPCHA: str = "//*[contains(text(), 'Я не робот')]"
 
 
 class GostXPaths(Enum):

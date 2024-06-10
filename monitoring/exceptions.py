@@ -4,54 +4,61 @@
 class ScreenshotNotFoundException(Exception):
     """Не найден скриншот - ошибка, которая делает невозможным
     дальнейшее выполнение программы."""
-    def __init__(self, image_path):
-        self.image_path = image_path
+    def __init__(self, screenshot):
+        super().__init__()
+        screenshot_name = screenshot[screenshot.rfind('\\'):]
+        self.msg = f'Скриншот <{screenshot_name}> не найден в течении заданного периода времени.'
 
 
-class StopIterationExceptionInGold(Exception):
-    """Прерывание цикла работы в ГОЛД."""
+class StopIterationInGoldException(Exception):
+    """Прерывание итерации в ГОЛД."""
     def __init__(self):
         super().__init__()
-        self.msg = 'Прервано выполнение функции add_declaration_number_and_manufacturer.'
+        self.msg = 'Прервана выполнение итерации проверки данных в ГОЛД'
 
 
-class SeleniumNotFoundException(Exception):
-    """Не дождались какого-либо элемента в selenium."""
+class StopMonitoringException(Exception):
+    """Прерывание итерации в ГОЛД."""
     def __init__(self):
         super().__init__()
-        self.msg = 'Превышено ожидание элемента на веб странице. Прерывание итерации.'
+        self.msg = 'Ошибка. Выход из браузера'
 
 
-class EgrulCaptchaException(Exception):
-    """Возникла капча в ЕГРЮЛ."""
+class NotLoadedDocumentsOnFsaForNewNumberException(Exception):
+    """Сайт ФСА заблокировал по IP и не прогружает документы для нового номера."""
+    def __init__(self, number):
+        super().__init__()
+        self.msg = f'На сайте ФСА не загружены документы для номера - {number}'
+
+
+class FileNotPassedException(Exception):
+    """ Название файла на рабочем столе не передано. """
     def __init__(self):
         super().__init__()
-        self.msg = 'Возникла капча в ЕГРЮЛ.'
+        self.msg = 'Название файла для проверки не передано. '
 
 
-class MaxIterationException(Exception):
-    """Более 20 итераций на ФСА, запустить цикл поновой с новыми данными."""
-    def __init__(self):
-        super().__init__()
-        self.msg = 'Более 20 итераций на ФСА.'
-
-
-class StopBrowserException(Exception):
-    """Произошла ошибка в работе браузера, прерывающая итерацию."""
-    def __init__(self):
-        super().__init__()
-        self.msg = 'Произошла ошибка в работе браузера, прерывающая итерацию.'
-
-
-class PathNotPass(Exception):
-    """'Путь не передан'"""
-    def __init__(self):
-        super().__init__()
-        self.msg = 'Путь не передан'
-
-
-class FileNotExisting(Exception):
+class FileNotExistingException(Exception):
     """Указанный файл не существует."""
     def __init__(self):
         super().__init__()
         self.msg = 'Указанный файл не существует.'
+
+
+class Server403Exception(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.msg = message
+
+
+class DocsForNewNumberNotLoadedException(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.msg = message
+
+
+class ServiceNotAvailableException(Exception):
+    """Указанный файл не существует."""
+    def __init__(self):
+        super().__init__()
+        self.msg = 'Сервис недоступен.'

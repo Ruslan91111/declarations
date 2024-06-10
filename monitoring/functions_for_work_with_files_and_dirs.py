@@ -9,16 +9,17 @@ import pandas as pd
 import psutil
 import py_win_keyboard_layout
 
-from monitoring.logger_config import log_to_file_info
+from monitoring.logger_config import logger
 
 
 def return_or_create_dir(path_to_dir: str):
     """ Вернуть или создать директорию. """
     if not os.path.isdir(path_to_dir):
         os.mkdir(path_to_dir)
-        log_to_file_info("Создана директория по пути %s" % path_to_dir)
+        logger.info("Создана директория <%s>." % path_to_dir)
     else:
-        log_to_file_info("Директория %s уже существует." % path_to_dir)
+        logger.info("Проверено наличие директории <%s>. "
+                         "Директория существует. " % path_to_dir)
     return path_to_dir
 
 
@@ -49,7 +50,7 @@ def return_or_create_xlsx_file(xlsx_file: str) -> str:
     sheet.title = "Sheet1"
     sheet.sheet_view.showGridLines = True
     workbook.save(xlsx_file)
-    log_to_file_info("Создан файл %s" % xlsx_file)
+    logger.info("Создан файл %s" % xlsx_file)
     return xlsx_file
 
 
@@ -89,6 +90,7 @@ def return_or_create_new_df(df, columns):
 
 
 def change_layout_on_english():
+    """ Переключить на английскую раскладку. """
     py_win_keyboard_layout.change_foreground_window_keyboard_layout(0x04090409)
 
 

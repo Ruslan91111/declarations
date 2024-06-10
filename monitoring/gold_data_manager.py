@@ -28,8 +28,8 @@ import pytesseract
 import pyperclip
 
 from config import LOGIN_VALUE, PASSWORD_VALUE
-from exceptions import ScreenshotNotFoundException, StopIterationExceptionInGold
-from logger_config import log_to_file_info
+from exceptions import ScreenshotNotFoundException, StopIterationInGoldException
+from logger_config import logger
 from monitoring.constants import (PATH_TO_TESSERACT, ScreenShotsForWorkWithGold as ScreenShots,
                                   FIREFOX_PROC, JAVA_PROC, FieldsInProductCardGold,
                                   Files, COLUMNS_FOR_GOLD_DF, DIR_CURRENT_MONTHLY_MONITORING)
@@ -304,10 +304,9 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
 
     def __init__(self, two_columns_file, gold_file, file_for_last_number):
         self.df_before_checking_in_gold = pd.read_excel(two_columns_file)
-        self.gold_df = return_or_create_xlsx_file(gold_file)
-        # Последний просмотренный номер - row.name из файла, перед проверкой в GOLD с тремя колонками
+        self.gold_file = return_or_create_xlsx_file(gold_file)
         self.last_viewed_number_in_gold = read_last_viewed_number_from_file(file_for_last_number)
-        self.new_df = return_or_create_new_df(self.gold_df, COLUMNS_FOR_GOLD_DF)
+        self.new_df = return_or_create_new_df(self.gold_file, COLUMNS_FOR_GOLD_DF)
         self.applicants_codes_and_names = read_and_return_dict_from_json_file(
             Files.APPLICANTS_CODES_AND_NAME_FROM_GOLD.value)
 
@@ -384,14 +383,14 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
 
     def process_add_data_from_gold_to_result_df(self):
         """ Запустить код сбора данных через конструкцию try/except """
-        self.activate_current_gold_or_launch_new_gold()
         try:
+            self.activate_current_gold_or_launch_new_gold()
             self.add_data_from_gold_to_result_df()
         except ScreenshotNotFoundException as error:
-            log_to_file_info('Скриншот %s не найден' % error.msg)
-            raise StopIterationExceptionInGold from error
+            logger.error(error.msg)
+            raise StopIterationInGoldException from error
         finally:
-            self.new_df.to_excel(self.gold_df, index=False)
+            self.new_df.to_excel(self.gold_file, index=False)
             write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value,
                                              self.last_viewed_number_in_gold)
 
@@ -401,7 +400,6 @@ def check_if_everything_is_checked_in_gold(two_columns_file: str, gold_file: str
     try:
         two_columns = pd.read_excel(two_columns_file)
         if two_columns.iloc[-1].name == read_last_viewed_number_from_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value):
-            log_to_file_info("Окончание работы с ГОЛД'")
             return True
         return False
     except (KeyError, FileNotFoundError):
@@ -410,13 +408,14 @@ def check_if_everything_is_checked_in_gold(two_columns_file: str, gold_file: str
 
 def launch_gold_module(attempts_for_range: int, two_columns_file: str, gold_file: str) -> None:
     """ Запуск всего кода модуля. """
-    log_to_file_info("Запуск программы по работе с ГОЛД")
     for _ in range(attempts_for_range):
         everything_is_checked = check_if_everything_is_checked_in_gold(two_columns_file, gold_file)
         if everything_is_checked:
+            logger.info("Все коды продуктов проверены в программе ГОЛД.")
             break
         try:
+            logger.info('Не все коды продуктов проверены в программе ГОЛД.')
             gold_collector = GoldCollector(two_columns_file, gold_file, Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
             gold_collector.process_add_data_from_gold_to_result_df()
-        except StopIterationExceptionInGold as error:
-            log_to_file_info(error.msg)
+        except StopIterationInGoldException as error:
+            logger.error(error.msg)

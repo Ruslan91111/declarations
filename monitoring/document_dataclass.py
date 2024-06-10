@@ -42,17 +42,18 @@ class Document:
         self.product_code = doc_data_from_gold.get('Код товара', 0)
         self.product_name = doc_data_from_gold.get('Наименование товара', '')
         self.number = doc_data_from_gold.get('ДОС', '').strip()
-        expiration_date = doc_data_from_gold.get('Дата окончания', '')
-        self.expiration_date = expiration_date[:6] + '20' + expiration_date[6:]
+        self.expiration_date = doc_data_from_gold.get('Дата окончания', '')
+        if isinstance(self.expiration_date, str):
+            self.expiration_date = self.expiration_date[:6] + '20' + self.expiration_date[6:]
         self.manufacturer = doc_data_from_gold.get('Изготовитель', '')
         self.applicant = doc_data_from_gold.get('Заявитель', '')
 
     def save_attrs_from_scrapper(self, doc_data_from_web: dict) -> None:
         """ Сохранить данные из собранных в интернете. """
         self.ogrn_applicant = doc_data_from_web.get(
-            'Основной государственный регистрационный номер юридического лица (ОГРН) applicant', 0)
+            'Основной государственный регистрационный номер юридического лица (ОГРН) applicant', 'Нет ОГРН')
         self.ogrn_manufacturer = doc_data_from_web.get(
-            'Основной государственный регистрационный номер юридического лица (ОГРН) manufacturer', 0)
+            'Основной государственный регистрационный номер юридического лица (ОГРН) manufacturer', 'Нет ОГРН')
         self.address_applicant = doc_data_from_web.get('Адрес места нахождения applicant', '')
         self.address_manufacturer = doc_data_from_web.get('Адрес места нахождения manufacturer', '')
         self.regulatory_document = doc_data_from_web.get('Наименование документа product', '')
