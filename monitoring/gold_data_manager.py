@@ -313,7 +313,7 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
     def make_copy_of_gold_file(self, row_name):
         """ Сделать копию ГОЛД файла"""
         make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING, 'copies_of_gold', row_name,
-                                     self.df_before_checking_in_gold, self.new_df, COLUMNS_FOR_GOLD_DF)
+                                     self.df_before_checking_in_gold, self.new_df)
 
     def handle_no_data_error(self, row):
         """ При сообщении нет данных добавление соответствующей строки в результат"""
@@ -386,8 +386,12 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
         try:
             self.activate_current_gold_or_launch_new_gold()
             self.add_data_from_gold_to_result_df()
-        except ScreenshotNotFoundException as error:
-            logger.error(error.msg)
+        except (ScreenshotNotFoundException, pyperclip.PyperclipWindowsException) as error:
+            if hasattr(error, 'msg'):
+                logger.error(error.msg)
+            else:
+                logger.error(error)
+
             raise StopIterationInGoldException from error
         finally:
             self.new_df.to_excel(self.gold_file, index=False)
