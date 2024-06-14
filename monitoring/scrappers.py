@@ -146,8 +146,8 @@ class FSADeclarationScrapper(BaseScrapper):
 
     def get_data_from_one_chapter(self, data: dict, chapter_name: str) -> dict:
         """Собрать данные с одного подраздела на сайте ФСА."""
-        headers = self.browser_worker.find_elements_by_class("info-row__header")
-        texts = self.browser_worker.find_elements_by_class("info-row__text")
+        headers = self.browser_worker.find_the_elements_by_class("info-row__header")
+        texts = self.browser_worker.find_the_elements_by_class("info-row__text")
         # Преобразуем данные в словарь.
         for header, text in zip(headers, texts):
             key = header.text.strip()
@@ -299,8 +299,8 @@ class FSACertificateScrapper(FSADeclarationScrapper):
         """Собрать внутренние элементы на веб-странице. """
         inner_elements = {}
         self.browser_worker.wait_until_all_elements_located_by_class('card-edit-row__content')
-        keys = self.browser_worker.find_elements_by_class('card-edit-row__header')
-        values = self.browser_worker.find_elements_by_class('card-edit-row__content')
+        keys = self.browser_worker.find_the_elements_by_class('card-edit-row__header')
+        values = self.browser_worker.find_the_elements_by_class('card-edit-row__content')
         for key, value in zip(keys, values):
             inner_elements[key.text + ' ' + chapter] = value.text
         return inner_elements
