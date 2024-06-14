@@ -37,7 +37,10 @@ RANDOM_SLEEP = time.sleep(random.randint(1, 3))
 # Классы Enum.
 ##########################################################################
 class Files(Enum):
+    """ Пути к используемым в коде файлам"""
     LAST_VIEWED_IN_WEB_NUMBER = r'.\%s\viewed_in_web_numbers_%s.txt' % (
+        DIR_CURRENT_MONTHLY_MONITORING, MONTH_AND_YEAR)
+    LAST_VIEWED_FOR_INTERNATIONAL = r'.\%s\viewed_for_international_%s.txt' % (
         DIR_CURRENT_MONTHLY_MONITORING, MONTH_AND_YEAR)
     RESULT_FILE = r'.\%s\result_data_after_web_%s.xlsx' % (
         DIR_CURRENT_MONTHLY_MONITORING, MONTH_AND_YEAR)
@@ -50,12 +53,15 @@ class Files(Enum):
 
 
 class Urls(Enum):
+    """ Url адреса"""
     FSA_DECLARATION: str = "https://pub.fsa.gov.ru/rds/declaration"
     FSA_CERTIFICATE: str = "https://pub.fsa.gov.ru/rss/certificate"
     EGRUL: str = "https://egrul.nalog.ru/"
     RUSPROFILE: str = "https://www.rusprofile.ru/"
     GOST: str = "https://etr-torgi.ru/calc/check_gost/"
     NSI: str = f'https://nsi.eaeunion.org/portal/1995?date={DATE_TODAY}'
+    INTERNATIONAL_DOCS: str = \
+        r'https://tech.eaeunion.org/registers/35-1/ru/registryList/conformityDocs'
 
 
 class FsaXPaths(Enum):
@@ -102,6 +108,7 @@ class GostXPaths(Enum):
 
 
 class ScreenShotsForWorkWithGold(Enum):
+    """ Пути к скриншотам для работы с программой GOLD. """
     # Связанные с меню
     FIREFOX_ICON: str = r'.\screenshots\appicon3.png'
     FIREFOX_ICON_PANEL: str = r'.\screenshots\firefox_icon_panel.png'
@@ -131,11 +138,30 @@ class ScreenShotsForWorkWithGold(Enum):
 
 
 class FieldsInProductCardGold(Enum):
+    """ Пути к скриншотам в карточке товара """
     REG_NUMBER_FIELD = r'.\screenshots\reg_numb.png'
     APPLICANT_CODE = r'.\screenshots\applicant_code.png'
     MANUFACTURER_FIELD = r'.\screenshots\manufacturer_field.png'
     DATE_OF_END = r'.\screenshots\date_of_end.png'
 
+
+class IndicatorsForInternationalDocs(Enum):
+    """ Xpaths для работы с сайтом проверки международных документов."""
+    EXTENDED_COUNTRY_FIELD: str = '//ng-component//p-multiselect/div/p-overlay/div/div/div/div[1]'
+    CLICK_TO_PICK_THE_COUNTRY: str = "//*[contains(text(), 'Страна')]"
+    COUNTRY_INPUT_FIELD: str = "//p-multiselect/div/p-overlay//div[1]/div[2]/input"
+    FOR_PICK_REQUIRED_COUNTRY: str = "//*[contains(text(), '{0}')]"
+    EARLY_PICKED_COUNTRY: str = ('//ng-component//div/form/div[2]/div/div[1]/div/div[2]'
+                                 '/p-multiselect/div/div[2]/div')
+    SHOW_FILTERS: str = "//*[contains(text(), 'Показать фильтры')]"
+    HIDE_FILTERS: str = "//*[contains(text(), 'Скрыть фильтры')]"
+    NO_DATA_ABOUT_DOC: str = "//*[contains(text(), 'Нет данных')]"
+    REG_NUMBER_FIELD: str = "//*[contains(text(),'Регистрационный номер документа')]"
+    REG_NUMBER_INPUT_FIELD: str = "//ng-component//div/form/div[3]/div/div/div[1]/div[2]/input"
+    BUTTON_APPLY_FILTERS: str = "//*[contains(text(),'Применить')]"
+    DOC_LOADED_ON_PAGE: str = f"//*[contains(text(), '{0}')]"
+    STATUS_OF_DOC_ON_PAGE: str = '//*[@id="pr_id_2-table"]/tbody/tr/td[10]/span[2]'
+    LOADING_PROCESS: str = '//p-progressspinner'
 
 ##########################################################################
 # Структуры данных с постоянными значениями

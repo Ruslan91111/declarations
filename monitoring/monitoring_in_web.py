@@ -5,7 +5,7 @@ import time
 import re
 
 import pandas as pd
-import pyautogui
+from logger_config import logger
 from fake_useragent import UserAgent
 
 from selenium import webdriver
@@ -20,9 +20,8 @@ from monitoring.document_dataclass import Document
 from monitoring.functions_for_work_with_files_and_dirs import (
     write_last_viewed_number_to_file, read_last_viewed_number_from_file, return_or_create_new_df,
     return_or_create_xlsx_file, return_or_create_dir)
-from logger_config import logger
 from monitoring.constants import (PATH_TO_DRIVER, Files, COLUMNS_FOR_RESULT_DF,
-                                  DIR_CURRENT_MONTHLY_MONITORING, RusProfileXPaths, Urls)
+                                  DIR_CURRENT_MONTHLY_MONITORING, Urls)
 from monitoring.scrappers import FSADeclarationScrapper, FSACertificateScrapper, SgrScrapper
 
 
@@ -59,12 +58,12 @@ def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
     for _, row in df.iterrows():
         ogrn_and_addresses[row['ОГРН заявителя']] = row['Адрес заявителя']
         ogrn_and_addresses[row['ОГРН изготовителя']] = row['Адрес изготовителя']
-    if 'Нет ОГРН' in ogrn_and_addresses.keys():
+    if 'Нет ОГРН' in ogrn_and_addresses:
         del ogrn_and_addresses['Нет ОГРН']
     return ogrn_and_addresses
 
 
-def make_copy_of_file_in_process(dir_month, dir_type_of_stage, row_name, new_df, columns):
+def make_copy_of_file_in_process(dir_month, dir_type_of_stage, row_name, new_df):
     """ Сделать копию файла"""
     return_or_create_dir(r'./%s/%s' % (dir_month, dir_type_of_stage))
     copy_xlsx_file = r'./%s/%s/copy_lane_%s.xlsx' % (dir_month, dir_type_of_stage, row_name)
@@ -94,6 +93,7 @@ class BrowserWorker:
         self.wait = wait
 
     def switch_to_tab(self, tab):
+        """ Переключиться на передаваемую вкладку. """
         self.browser.switch_to.window(tab)
 
     def make_new_tab(self, url: str):
@@ -119,61 +119,67 @@ class BrowserWorker:
 
     def wait_until_all_elements_located_by_class(self, class_name):
         """ Найти и вернуть элемент на странице """
-        searched_elements = self.wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, class_name)))
+        searched_elements = self.wait.until(EC.presence_of_all_elements_located(
+            (By.CLASS_NAME, class_name)))
         return searched_elements
 
     def find_an_element_by_class(self, class_name):
+        """ Найти элемент по классу. """
         element = self.browser.find_element(By.CLASS_NAME, class_name)
         return element
 
-    def find_elements_by_class(self, class_name):
+    def find_the_elements_by_class(self, class_name):
+        """ Найти все элементы по классу. """
         elements = self.browser.find_elements(By.CLASS_NAME, class_name)
         return elements
 
     def find_elements_by_xpath(self, xpath):
+        """ Найти все элементы по xpath. """
         element = self.browser.find_elements(By.XPATH, xpath)
         return element
 
     def input_in_field(self, xpath_input_field: str, value: str):
+        """ Ввести в поле """
         input_field = self.wait_until_element_to_be_clickable(xpath_input_field)
         input_field.clear()
         input_field.send_keys(value)
 
     def wait_and_click_element(self, xpath: str):
+        """ Дождаться и кликнуть по элементу. """
         element = self.wait_until_element_to_be_clickable(xpath)
         element.click()
         return element
 
     def wait_and_press_element_through_chain(self, xpath: str):
+        """ Кликнуть по элементу через цепочку действий. """
         element = self.wait_until_element_to_be_clickable(xpath)
         ActionChains(self.browser).move_to_element(element).click().perform()
         return element
 
     def input_in_field_and_press_search_button(self, xpath_input_field: str,
                                                value: str, xpath_search_button: str):
+        """ Ввести в поле и кликнуть по кнопке поиска. """
         self.input_in_field(xpath_input_field, value)
         self.wait_and_click_element(xpath_search_button)
 
     def get_text_from_element_by_xpath(self, xpath: str):
+        """ Получить текст из элемента, искомого по xpath."""
         element = self.wait_until_element_to_be_located(xpath)
         text_from_element = element.text.strip()
         return text_from_element
 
     def get_text_from_element_by_class(self, class_name: str):
+        """ Получить текст из элемента, искомого по классу."""
         element = self.wait.until(EC.element_to_be_clickable((By.CLASS_NAME, class_name)))
         text_from_element = element.text.strip()
         return text_from_element
 
     def refresh_browser(self):
+        """ Обновить браузер. """
         self.browser.refresh()
 
-    def refresh_browser_by_hotkey(self):
-        pyautogui.hotkey('ctrl', 'r')
-
-    def chain_move_and_click(self, element):
-        ActionChains(self.browser).move_to_element(element).click().perform()
-
     def browser_quit(self):
+        """ Закрыть браузер."""
         self.browser.quit()
 
 
@@ -193,20 +199,34 @@ class RequiredTabsWorker(BrowserWorker):
         return tabs
 
 
+def determine_type_of_doc(number) -> type | None:
+    """ Определить тип документа. """
+    patterns = {
+        r'(ЕАЭС N RU Д-[\w\.]+)': FSADeclarationScrapper,
+        r'(РОСС RU Д-[\w\.]+)': FSADeclarationScrapper,
+        r'(ТС N RU Д-[\w\.]+)': FSADeclarationScrapper,
+        r'(ЕАЭС RU С-[\w\.]+)': FSACertificateScrapper,
+        r'(РОСС RU С-[\w\.]+)': FSACertificateScrapper,
+        r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}': SgrScrapper}
+    for pattern, scrapper_class in patterns.items():
+        if re.match(pattern, number):
+            return scrapper_class
+    return None
+
+
 class WebMonitoringWorker:
+    """ Класс проверки - мониторинга документов. """
+    def __init__(self, gold_file, result_file, file_for_last_number, number_of_iteration,
+                 browser_worker=RequiredTabsWorker):
 
-    def __init__(self, gold_file, result_file, file_for_last_number, browser_worker=RequiredTabsWorker):
-
-        self.gold_file = gold_file
         self.result_file = result_file
-
         self.gold_df = pd.read_excel(gold_file)
         self.already_checked_df = pd.read_excel(return_or_create_xlsx_file(result_file))
         self.new_df = return_or_create_new_df(result_file, columns=[COLUMNS_FOR_RESULT_DF])
 
         self.ogrn_and_addresses = make_and_return_ogrn_and_addresses(self.result_file)
         self.last_checked_in_web_number = read_last_viewed_number_from_file(file_for_last_number)
-        self.number_of_iteration = 0
+        self.number_of_iteration = number_of_iteration
         self.request_time = 0
 
         browser = make_browser(self.number_of_iteration)
@@ -217,31 +237,20 @@ class WebMonitoringWorker:
         """ Сделать копию итогового файла"""
         if row.name % 500 == 0 and row.name != 0:
             make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING, 'copies_of_web', row.name,
-                                         self.already_checked_df, self.new_df)
+                                         self.new_df)
 
     def check_request_time(self, scrapper_by_type_of_doc, elapsed_time_from_last_request):
-        if ((scrapper_by_type_of_doc == FSADeclarationScrapper or
-             scrapper_by_type_of_doc == FSACertificateScrapper) and
+        """ Проверить сколько времени прошло с момента последнего обращения к сайту ФСА,
+        если недостаточно, то выполнить задержку. """
+        if (scrapper_by_type_of_doc in {FSADeclarationScrapper, FSACertificateScrapper} and
                 0 < elapsed_time_from_last_request < 60):
             time.sleep(60 - elapsed_time_from_last_request)
 
     def write_df_and_last_checked_number_in_files(self):
+        """ Записать dataframe и номер последней просмотренной строки в файлы. """
         self.new_df.to_excel(self.result_file, index=False)
-        write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value, self.last_checked_in_web_number)
-
-    def determine_type_of_doc(self, number) -> type | None:
-        """ Определить тип документа. """
-        patterns = {
-            r'(ЕАЭС N RU Д-[\w\.]+)': FSADeclarationScrapper,
-            r'(РОСС RU Д-[\w\.]+)': FSADeclarationScrapper,
-            r'(ТС N RU Д-[\w\.]+)': FSADeclarationScrapper,
-            r'(ЕАЭС RU С-[\w\.]+)': FSACertificateScrapper,
-            r'(РОСС RU С-[\w\.]+)': FSACertificateScrapper,
-            r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}': SgrScrapper}
-        for pattern, scrapper_class in patterns.items():
-            if re.match(pattern, number):
-                return scrapper_class
-        return None
+        write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value,
+                                         self.last_checked_in_web_number)
 
     def collect_data_about_docs_through_for(self) -> None:
         """ Через цикл перебираем строки в ГОЛД файле и собираем по ним данные. """
@@ -251,7 +260,7 @@ class WebMonitoringWorker:
             document.convert_and_save_attrs_from_gold(dict(row))
 
             # По паттернам определяем тип документа и создаем объект определенного scrapper
-            scrapper_by_type_of_doc = self.determine_type_of_doc(document.number)
+            scrapper_by_type_of_doc = determine_type_of_doc(document.number)
             if not scrapper_by_type_of_doc:  # Для не подпадающего под паттерны.
                 self.new_df = self.new_df._append(row, ignore_index=True)
                 continue
@@ -276,7 +285,8 @@ class WebMonitoringWorker:
             if hasattr(scrapper, 'request_time'):
                 self.request_time = scrapper.request_time
 
-            self.new_df = self.new_df._append(scrapper.document.convert_document_to_pd_series(), ignore_index=True)
+            self.new_df = self.new_df._append(scrapper.document.convert_document_to_pd_series(),
+                                              ignore_index=True)
             self.last_checked_in_web_number = row.name
 
 
@@ -285,7 +295,7 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
     """ Запуск кода из модуля в цикле."""
     logger.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, RUSPROFILE, ГОСТ.")
 
-    for _ in range(count_of_iterations):
+    for number_of_iteration in range(count_of_iterations):
 
         # Проверка все ли проверено в вебе.
         everything_is_checked = check_if_everything_is_checked_in_web(
@@ -294,5 +304,6 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
             logger.info("Все коды продуктов проверены на интернет ресурсах.")
             break
         logger.info("Продолжается проверка продуктов на сайтах.")
-        monitoring_worker = WebMonitoringWorker(gold_file, result_file, file_for_last_number, browser_worker)
+        monitoring_worker = WebMonitoringWorker(gold_file, result_file, file_for_last_number,
+                                                number_of_iteration, browser_worker)
         monitoring_worker.collect_data_about_docs_through_for()
