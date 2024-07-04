@@ -4,12 +4,15 @@ import shutil
 import sys
 
 import pandas as pd
-from monitoring.exceptions import FileNotPassedException, FileNotExistingException
+
 from gold_data_manager import launch_gold_module
-from monitoring.constants import Files, PATH_TO_DESKTOP, MESSAGE_FOR_USER_TO_INPUT_FILE
-from monitoring.functions_for_work_with_files_and_dirs import change_layout_on_english
-from monitoring_in_web import launch_checking_in_web, RequiredTabsWorker
 from logger_config import logger
+
+from monitoring_in_web import launch_checking_in_web, RequiredTabsWorker
+
+from exceptions import FileNotPassedException, FileNotExistingException
+from constants import Files, PATH_TO_DESKTOP, MESSAGE_FOR_USER_TO_INPUT_FILE
+from functions_for_work_with_files_and_dirs import change_layout_on_english
 
 
 def create_sheet_write_codes_and_names(file_for_checking: str,
@@ -49,7 +52,8 @@ def check_or_create_file_before_checking_in_gold(checking_file):
         create_sheet_write_codes_and_names(checking_file)
 
 
-def automatic_launch_program():
+def launch_monitoring():
+    """ Запуск программы мониторинга. """
     logger.info(" Старт программы мониторинга. ")
     checking_file = get_name_for_matrix_file_on_desktop(MESSAGE_FOR_USER_TO_INPUT_FILE)
     change_layout_on_english()
@@ -71,5 +75,4 @@ def automatic_launch_program():
 
 if __name__ == '__main__':
     change_layout_on_english()
-    # time.sleep(60*40)
-    automatic_launch_program()
+    launch_monitoring()
