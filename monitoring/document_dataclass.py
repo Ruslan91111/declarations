@@ -10,6 +10,7 @@ import pandas as pd
 
 @dataclass
 class Document:
+    """ Класс для хранения данных по документу. """
     # Атрибуты с данными из ГОЛД
     matrix_number: int = 0
     product_code: int = 0
@@ -27,8 +28,8 @@ class Document:
     regulatory_document: str = ''
     standard: str = ''
     # Атрибуты с данными с сайта rusprofile
-    rusprofile_address_applicant: str = ''
-    rusprofile_address_manufacturer: str = ''
+    address_applicant_from_web: str = ''
+    address_manufacturer_from_web: str = ''
     # Статус ГОСТ
     status_of_regulatory_documentation: str = ''
     # Атрибуты с дополнительной логикой.
@@ -51,9 +52,11 @@ class Document:
     def save_attrs_from_scrapper(self, doc_data_from_web: dict) -> None:
         """ Сохранить данные из собранных в интернете. """
         self.ogrn_applicant = doc_data_from_web.get(
-            'Основной государственный регистрационный номер юридического лица (ОГРН) applicant', 'Нет ОГРН')
+            'Основной государственный регистрационный '
+            'номер юридического лица (ОГРН) applicant', 'Нет ОГРН')
         self.ogrn_manufacturer = doc_data_from_web.get(
-            'Основной государственный регистрационный номер юридического лица (ОГРН) manufacturer', 'Нет ОГРН')
+            'Основной государственный регистрационный '
+            'номер юридического лица (ОГРН) manufacturer', 'Нет ОГРН')
         self.address_applicant = doc_data_from_web.get('Адрес места нахождения applicant', '')
         self.address_manufacturer = doc_data_from_web.get('Адрес места нахождения manufacturer', '')
         self.regulatory_document = doc_data_from_web.get('Наименование документа product', '')
@@ -75,9 +78,9 @@ class Document:
             'ОГРН изготовителя': self.ogrn_manufacturer,
             'Соответствие адресов с ЕГРЮЛ': self.address_matching,
             'Адрес заявителя': self.address_applicant,
-            'Адрес заявителя ЕГРЮЛ': self.rusprofile_address_applicant,
+            'Адрес заявителя ЕГРЮЛ': self.address_applicant_from_web,
             'Адрес изготовителя': self.address_manufacturer,
-            'Адрес изготовителя ЕГРЮЛ': self.rusprofile_address_manufacturer,
+            'Адрес изготовителя ЕГРЮЛ': self.address_manufacturer_from_web,
             'Статус НД': self.status_of_regulatory_documentation,
             'ФИО': self.inspector,
         }

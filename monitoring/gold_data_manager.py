@@ -37,7 +37,7 @@ from monitoring.constants import (PATH_TO_TESSERACT, ScreenShotsForWorkWithGold 
 from monitoring.functions_for_work_with_files_and_dirs import (
     write_last_viewed_number_to_file, read_last_viewed_number_from_file,
     return_or_create_xlsx_file, read_and_return_dict_from_json_file,
-    check_process_in_os, return_or_create_dir, return_or_create_new_df, terminate_the_proc)
+    check_process_in_os, return_or_create_new_df, terminate_the_proc)
 from monitoring.monitoring_in_web import make_copy_of_file_in_process
 
 # Путь к файлам Tesseract OCR и poppler
@@ -181,17 +181,20 @@ class GoldMenuNavigator(ScreenshotWorker):
     def navigate_menu_from_start(self) -> None:
         """ В окне firefox открыть меню ГОЛД и пройти по нему
         до ввода номера товара, до пункта 33.4 """
-
-        self.search_screenshot_and_click(ScreenShots.GOLD_LOADED.value)  # Проверка загрузки firefox.
-        self.search_screenshot_and_click(ScreenShots.STOCK_11.value)  # Кликнуть по stock 11
-        self.input_in_field_using_offset(ScreenShots.LOGIN_PLACE.value, LOGIN_VALUE, 20)
-        self.input_in_field_using_offset(ScreenShots.PASSWORD_PLACE.value, PASSWORD_VALUE, 20)
+        # Проверка загрузки firefox.
+        self.search_screenshot_and_click(ScreenShots.GOLD_LOADED.value)
+        self.search_screenshot_and_click(ScreenShots.STOCK_11.value)
+        self.input_in_field_using_offset(
+            ScreenShots.LOGIN_PLACE.value, LOGIN_VALUE, 20)
+        self.input_in_field_using_offset(
+            ScreenShots.PASSWORD_PLACE.value, PASSWORD_VALUE, 20)
         self.search_screenshot_and_click(ScreenShots.ENTER_LOGIN.value)  # Нажать войти.
-        menu_33 = self.search_screenshot_and_click(ScreenShots.MENU_33.value, timeout=30)  # 33 пункт меню
+        menu_33 = self.search_screenshot_and_click(
+            ScreenShots.MENU_33.value, timeout=30)
         pyautogui.doubleClick(menu_33)
-        menu_33_4 = self.search_screenshot_and_click(ScreenShots.MENU_33_4.value)  # 33.4 пункт меню
+        menu_33_4 = self.search_screenshot_and_click(ScreenShots.MENU_33_4.value)
         pyautogui.doubleClick(menu_33_4)
-        self.search_screenshot_and_click(ScreenShots.TO_SEAL_OVERDUE.value)  # Включить-скрыть просроченные.
+        self.search_screenshot_and_click(ScreenShots.TO_SEAL_OVERDUE.value)
         x, y = pyautogui.position()
         pyautogui.click(x - 80, y)
 
@@ -239,7 +242,8 @@ class GoldLauncher(GoldMenuNavigator):
         # Переключить на английскую раскладку
         time.sleep(1)
         pyautogui.hotkey('Win', 'd')  # Свернуть все окна.
-        self.search_screenshot_and_click(ScreenShots.FIREFOX_ICON.value)  # Открыть через иконку на столе.
+        # Открыть через иконку на столе.
+        self.search_screenshot_and_click(ScreenShots.FIREFOX_ICON.value)
         pyautogui.press('enter')
 
     def activate_current_gold_or_launch_new_gold(self) -> None:
@@ -313,7 +317,7 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
     def make_copy_of_gold_file(self, row_name):
         """ Сделать копию ГОЛД файла"""
         make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING, 'copies_of_gold', row_name,
-                                     self.df_before_checking_in_gold, self.new_df)
+                                     self.new_df)
 
     def handle_no_data_error(self, row):
         """ При сообщении нет данных добавление соответствующей строки в результат"""
@@ -399,11 +403,12 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
                                              self.last_viewed_number_in_gold)
 
 
-def check_if_everything_is_checked_in_gold(two_columns_file: str, gold_file: str) -> bool | None:
+def check_if_everything_is_checked_in_gold(two_columns_file: str) -> bool | None:
     """ Проверка, проверены ли все номера в ГОЛД. """
     try:
         two_columns = pd.read_excel(two_columns_file)
-        if two_columns.iloc[-1].name == read_last_viewed_number_from_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value):
+        if two_columns.iloc[-1].name == read_last_viewed_number_from_file(
+                Files.LAST_VIEWED_IN_GOLD_NUMBER.value):
             return True
         return False
     except (KeyError, FileNotFoundError):
@@ -419,7 +424,9 @@ def launch_gold_module(attempts_for_range: int, two_columns_file: str, gold_file
             break
         try:
             logger.info('Не все коды продуктов проверены в программе ГОЛД.')
-            gold_collector = GoldCollector(two_columns_file, gold_file, Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
+            gold_collector = GoldCollector(two_columns_file,
+                                           gold_file,
+                                           Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
             gold_collector.process_add_data_from_gold_to_result_df()
         except StopIterationInGoldException as error:
             logger.error(error.msg)

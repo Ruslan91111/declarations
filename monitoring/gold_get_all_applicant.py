@@ -9,15 +9,7 @@ import pyautogui
 import pyperclip
 import time
 
-from monitoring.gold_data_manager import (wait_and_click_screenshot, APPLICANT_CODE,
-                                          activate_current_gold_or_launch_new_gold,
-                                          input_in_gold_by_screenshot,
-                                          PRODUCT_INPUT,
-                                          waiting_disappear_screenshot,
-                                          LOADING_PRODUCT,
-                                          handle_error_no_data_in_web,
-                                          search_coords_of_all_declarations_on_page_in_gold,
-                                          DECLARATION_CARD)
+from gold_data_manager import GoldLauncher
 
 PRODUCT_NUMBER = '2000269222'
 APPLICANTS_CODES_AND_NAME = 'dict_applicant.json'
@@ -34,8 +26,10 @@ def get_all_applicant_and_codes_from_gold():
     В среднем около 6500 наименований, обрабатывается за 90 минут.
 
     """
+    gold_launcher = GoldLauncher()
+
     # Запустить или раскрыть окно ГОЛД.
-    activate_current_gold_or_launch_new_gold()
+    gold_launcher.activate_current_gold_or_launch_new_gold()
     # Ввести номер кода товара.
     input_in_gold_by_screenshot(PRODUCT_INPUT, PRODUCT_NUMBER, 120)
     # Нажать поиск.

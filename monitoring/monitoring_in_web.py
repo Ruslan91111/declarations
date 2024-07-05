@@ -27,16 +27,18 @@ from monitoring.scrappers import FSADeclarationScrapper, FSACertificateScrapper,
 
 def make_browser(number_of_iteration: int):
     """ Создать экземпляр браузера со всеми необходимыми параметрами. """
+
     service = Service(PATH_TO_DRIVER)
     service.start()
     options = webdriver.ChromeOptions()
     options.add_argument("--window-size=1920,1080")
     if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
         options.add_argument(f'--proxy-server={PROXY}')
-    # options.add_argument('--headless')
+    options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
     options.add_argument(f'--user-agent={user_agent}')
+
     browser = webdriver.Chrome(service=service, options=options)
     return browser
 
@@ -52,6 +54,11 @@ def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
     словарь из ключей: ОГРН и значений: адресов юридических лиц."""
     try:
         df = pd.read_excel(result_file)
+
+        # Сформировать
+        if len(df) != 0:
+            df = df.dropna(subset=['ОГРН заявителя', 'Адрес заявителя',
+                                   'ОГРН изготовителя', 'Адрес изготовителя'])
     except FileNotFoundError:
         return {}
     ogrn_and_addresses = {}
@@ -60,6 +67,7 @@ def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
         ogrn_and_addresses[row['ОГРН изготовителя']] = row['Адрес изготовителя']
     if 'Нет ОГРН' in ogrn_and_addresses:
         del ogrn_and_addresses['Нет ОГРН']
+
     return ogrn_and_addresses
 
 
@@ -195,7 +203,9 @@ class RequiredTabsWorker(BrowserWorker):
                 'certificate': self.make_new_tab(Urls.FSA_CERTIFICATE.value),
                 'nsi': self.make_new_tab(Urls.NSI.value),
                 'rusprofile': self.make_new_tab(Urls.RUSPROFILE.value),
-                'gost': self.make_new_tab(Urls.GOST.value)}
+                'gost': self.make_new_tab(Urls.GOST.value),
+                'egrul': self.make_new_tab(Urls.EGRUL.value)}
+
         return tabs
 
 
@@ -217,18 +227,20 @@ def determine_type_of_doc(number) -> type | None:
 class WebMonitoringWorker:
     """ Класс проверки - мониторинга документов. """
     def __init__(self, gold_file, result_file, file_for_last_number, number_of_iteration,
-                 browser_worker=RequiredTabsWorker):
-
+                 error, time_error, browser_worker=RequiredTabsWorker):
+        # Файлы и DataFrame
         self.result_file = result_file
         self.gold_df = pd.read_excel(gold_file)
         self.already_checked_df = pd.read_excel(return_or_create_xlsx_file(result_file))
-        self.new_df = return_or_create_new_df(result_file, columns=[COLUMNS_FOR_RESULT_DF])
-
+        self.result_df = return_or_create_new_df(result_file, columns=[COLUMNS_FOR_RESULT_DF])
+        # Данные необходимые для мониторинга.
         self.ogrn_and_addresses = make_and_return_ogrn_and_addresses(self.result_file)
         self.last_checked_in_web_number = read_last_viewed_number_from_file(file_for_last_number)
         self.number_of_iteration = number_of_iteration
         self.request_time = 0
-
+        self.error = error
+        self.error_time = time_error
+        # Используемые объекты browser и wait
         browser = make_browser(self.number_of_iteration)
         wait = make_wait(browser, 30)
         self.browser_worker = browser_worker(browser, wait)
@@ -236,8 +248,8 @@ class WebMonitoringWorker:
     def make_copy_of_web_file(self, row):
         """ Сделать копию итогового файла"""
         if row.name % 500 == 0 and row.name != 0:
-            make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING, 'copies_of_web', row.name,
-                                         self.new_df)
+            make_copy_of_file_in_process(DIR_CURRENT_MONTHLY_MONITORING,
+                                         'copies_of_web', row.name, self.result_df)
 
     def check_request_time(self, scrapper_by_type_of_doc, elapsed_time_from_last_request):
         """ Проверить сколько времени прошло с момента последнего обращения к сайту ФСА,
@@ -248,52 +260,74 @@ class WebMonitoringWorker:
 
     def write_df_and_last_checked_number_in_files(self):
         """ Записать dataframe и номер последней просмотренной строки в файлы. """
-        self.new_df.to_excel(self.result_file, index=False)
+        self.result_df.to_excel(self.result_file, index=False)
         write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_WEB_NUMBER.value,
                                          self.last_checked_in_web_number)
 
-    def collect_data_about_docs_through_for(self) -> None:
+    def collect_data_for_all_docs(self) -> None:
         """ Через цикл перебираем строки в ГОЛД файле и собираем по ним данные. """
         for _, row in self.gold_df.iloc[self.last_checked_in_web_number:].iterrows():
             self.make_copy_of_web_file(row)
-            document = Document()
-            document.convert_and_save_attrs_from_gold(dict(row))
+            try:
+                document = Document()
+                document.convert_and_save_attrs_from_gold(dict(row))
 
-            # По паттернам определяем тип документа и создаем объект определенного scrapper
-            scrapper_by_type_of_doc = determine_type_of_doc(document.number)
-            if not scrapper_by_type_of_doc:  # Для не подпадающего под паттерны.
-                self.new_df = self.new_df._append(row, ignore_index=True)
-                continue
+                # По паттернам определяем тип документа и создаем объект определенного scrapper
+                type_of_scrapper = determine_type_of_doc(document.number)
+                logger.info(document.number)
+                if not type_of_scrapper:  # Для не подпадающего под паттерны.
+                    self.result_df = self.result_df._append(row, ignore_index=True)
+                    continue
 
-            # Отслеживаем время с последнего запроса к сайту ФСА.
-            elapsed_time_from_last_request = time.time() - self.request_time
-            self.check_request_time(scrapper_by_type_of_doc, elapsed_time_from_last_request)
+                # Отслеживаем время с последнего запроса к сайту ФСА.
+                elapsed_time_from_last_request = time.time() - self.request_time
+                self.check_request_time(type_of_scrapper, elapsed_time_from_last_request)
 
-            # Определить какой тип документа и какой сайт нужен.
-            scrapper = scrapper_by_type_of_doc(self.browser_worker, document)
-
-            try:  # Сбор данных по документу.
-                scrapper.process_get_data_on_document()
+                # Инициализировать scrapper.
+                scrapper = type_of_scrapper(self.browser_worker, document, self.ogrn_and_addresses)
+                scrapper.process_get_data_on_document()  # Сбор данных по документу.
+                self.ogrn_and_addresses = scrapper.ogrn_and_addresses
 
             except Exception as error:
-                self.write_df_and_last_checked_number_in_files()
-                logger.error(error)
-                self.browser_worker.browser_quit()
+                self.handle_error_in_collect_data(error=error, timeout=15)
                 break
 
             # Атрибут request_time только у сборщиков данных сайта FSA.
             if hasattr(scrapper, 'request_time'):
                 self.request_time = scrapper.request_time
 
-            self.new_df = self.new_df._append(scrapper.document.convert_document_to_pd_series(),
-                                              ignore_index=True)
+            self.result_df = self.result_df._append(
+                scrapper.document.convert_document_to_pd_series(), ignore_index=True)
             self.last_checked_in_web_number = row.name
+
+    def handle_error_in_collect_data(self, error, timeout: int) -> None:
+        """ Набор действий при возникновении исключения при работе метода
+        self.collect_data_all_docs. Также проверяется, не заблокированы ли оба ip
+        адреса на сайте FSA. Если заблокированы, то выполнить задержку."""
+        if (str(error) == str(self.error) == 'Ошибка 403 на сервере' and
+                (time.time() - float(self.error_time)) < (60 * 5)):
+            logger.info('Ошибка сервера 403 для обоих ip адресов.')
+            time.sleep(60 * timeout)
+        self.error = error
+        self.error_time = time.time()
+
+        if hasattr(error, 'msg'):
+            logger.error(error.msg)
+        else:
+            logger.error(error)
+
+        self.write_df_and_last_checked_number_in_files()
+        self.browser_worker.browser_quit()
 
 
 def launch_checking_in_web(gold_file, result_file, count_of_iterations,
                            file_for_last_number, browser_worker=RequiredTabsWorker):
     """ Запуск кода из модуля в цикле."""
-    logger.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, RUSPROFILE, ГОСТ.")
+
+    logger.info("Старт проверки данных на интернет ресурсах: "
+                "ФСА, СГР, RUSPROFILE, ЕГРЮЛ, ГОСТ.")
+    last_error = None
+    time_of_last_error = 0
 
     for number_of_iteration in range(count_of_iterations):
 
@@ -305,5 +339,10 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
             break
         logger.info("Продолжается проверка продуктов на сайтах.")
         monitoring_worker = WebMonitoringWorker(gold_file, result_file, file_for_last_number,
-                                                number_of_iteration, browser_worker)
-        monitoring_worker.collect_data_about_docs_through_for()
+                                                number_of_iteration, last_error,
+                                                time_of_last_error, browser_worker)
+
+        monitoring_worker.collect_data_for_all_docs()
+
+        last_error = monitoring_worker.error
+        time_of_last_error = monitoring_worker.error_time

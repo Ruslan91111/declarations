@@ -7,11 +7,11 @@ from enum import Enum
 import time
 import random
 
-from monitoring.functions_for_work_with_files_and_dirs import return_or_create_dir
+from functions_for_work_with_files_and_dirs import return_or_create_dir
 
 
 # Пути к файлам.
-PATH_TO_DRIVER = r'.\chromedriver.exe'
+PATH_TO_DRIVER = r'..\chromedriver.exe'
 PATH_TO_TESSERACT = r'C:\Users\impersonal\AppData\Local\Programs\Tesseract-OCR\tesseract'
 
 # Связанные с датой.
@@ -78,7 +78,11 @@ class FsaXPaths(Enum):
     ERROR_403: str = "//*[contains(text(), '403 Forbidden')]"
     SERVICE_NOT_AVAILABLE: str = "//*[contains(text(), 'Сервис временно недоступен')]"
     SERVICE_NOT_AVAILABLE_OK_BUTTON: str = "//*[contains(text(), 'OK')]"
-
+    NO_RECORDS_MATCHING_THE_SEARCH: str = ("//*[contains(text(), "
+                                           "'Нет записей, удовлетворяющих поиску')]")
+    NOT_VALID_DECLARATION: str = "/*//tbody/tr[2]/td[2]//*[@alt]"
+    PLACE_FOR_STATUS_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]"
+    COUNT_OF_PAGE: str = r'/*//tbody//tr//*[@alt]'
 
 class NSIXPaths(Enum):
     """XPATH для сайта проверки СГР"""
@@ -97,14 +101,19 @@ class RusProfileXPaths(Enum):
     INPUT_FIELD: str = "(//input[contains(@placeholder, 'Искать по названию, адресу')])[last()]"
     SEARCH_BUTTON: str = "(//button[@type='submit'])[last()]"
     ADDRESS_PLACE: str = '//address[@class]'
-    CAPCHA: str = "//*[contains(text(), 'Я не робот')]"
+    CAPTCHA_SECTION: str = "//*[contains(@class, 'captcha-section')]"
+    CAPTCHA_CHECKBOX: str = "//*[contains(@class,'recaptcha-checkbox-border')]"
+
+    NO_ORGANISATION_FOUND: str = ("//h1[contains(text(), 'По запросу') "
+                                  "and contains(., 'найдены 0 организаций "
+                                  "и 0 индивидуальных предпринимателей')]")
 
 
 class GostXPaths(Enum):
     """XPATH для сайта etr-torgi - проверка ГОСТ"""
     INPUT_FIELD: str = '//*[@id="poisk-form"]/input'
     SEARCH_BUTTON: str = '//*[@id="gost_filter"]'
-    GOST_STATUS: str = '//*[@id="data-box"]/div/div/div/p/b'
+    GOST_STATUS: str = '//*[@id="data-box"]//b'
 
 
 class ScreenShotsForWorkWithGold(Enum):
@@ -160,7 +169,7 @@ class IndicatorsForInternationalDocs(Enum):
     REG_NUMBER_INPUT_FIELD: str = "//ng-component//div/form/div[3]/div/div/div[1]/div[2]/input"
     BUTTON_APPLY_FILTERS: str = "//*[contains(text(),'Применить')]"
     DOC_LOADED_ON_PAGE: str = f"//*[contains(text(), '{0}')]"
-    STATUS_OF_DOC_ON_PAGE: str = '//*[@id="pr_id_2-table"]/tbody/tr/td[10]/span[2]'
+    STATUS_OF_DOC_ON_PAGE: str = f"//*[contains(text(),'{0}')]/../..//td[last()]"
     LOADING_PROCESS: str = '//p-progressspinner'
 
 ##########################################################################
@@ -278,3 +287,13 @@ MESSAGE_FOR_USER_TO_INPUT_FILE = (
     'Введите название файла, без пути и расширения, после чего нажмите <Enter>.\n'
     'Надежнее всего скопировать наименование файла в свойствах файла\n'
     'или скопировать наименование файла при переименовании\n>>>')
+
+
+class EgrulXPaths(Enum):
+    """XPATH для сайта rusprofile - проверка адресов юр.лиц"""
+    INPUT_FIELD: str = "//input[contains(@placeholder, 'Укажите ИНН')]"
+    SEARCH_BUTTON: str = "//button[contains(text(), 'Найти')]"
+    GET_RECORD: str = "//button[contains(text(), 'Получить выписку')]"
+
+
+PATH_TO_DOWNLOAD_DIR = r'C:\Users\impersonal\Downloads'

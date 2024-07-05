@@ -35,6 +35,7 @@ from monitoring.constants import Files, IndicatorsForInternationalDocs, Urls
 
 from monitoring.functions_for_work_with_files_and_dirs import read_last_viewed_number_from_file, \
     write_last_viewed_number_to_file
+from monitoring.logger_config import logger
 from monitoring.monitoring_in_web import make_wait, BrowserWorker, make_browser
 
 
@@ -45,7 +46,7 @@ class InternationalScrapper:
                  file_for_last_number=Files.LAST_VIEWED_FOR_INTERNATIONAL.value):
         self.result_file = result_file
         browser = make_browser(0)
-        wait = make_wait(browser, 40)
+        wait = make_wait(browser, 240)
         self.browser_worker = browser_worker(browser, wait)
         self.browser_worker.make_new_tab(Urls.INTERNATIONAL_DOCS.value)
         self.df = pd.read_excel(self.result_file)
@@ -66,6 +67,9 @@ class InternationalScrapper:
                     status = self.check_the_status_of_doc_in_web()
                     self.df.at[iteration, 'Статус на сайте'] = status
                     self.last_checked_in_web_number = row.name
+        except Exception as error:
+            logger.error(error)
+
         finally:
             self.write_df_and_last_checked_number_in_files()
 
@@ -81,7 +85,7 @@ class InternationalScrapper:
             self.indicators.EARLY_PICKED_COUNTRY.value)
         country_of_current_doc = determine_country_of_doc(self.number)
 
-        if old_country_on_page is not None and old_country_on_page != country_of_current_doc:
+        if old_country_on_page != '' and old_country_on_page != country_of_current_doc:
             self.browser_worker.refresh_browser()
         self.check_that_page_loaded()
 
@@ -128,7 +132,7 @@ class InternationalScrapper:
             self.browser_worker.find_elements_by_xpath(
                 self.indicators.DOC_LOADED_ON_PAGE.value.format(self.number))
             status = self.browser_worker.get_text_from_element_by_xpath(
-                self.indicators.STATUS_OF_DOC_ON_PAGE.value)
+                self.indicators.STATUS_OF_DOC_ON_PAGE.value.format(self.number))
 
         return status
 
@@ -141,11 +145,11 @@ class InternationalScrapper:
     def check_that_page_loaded(self):
         """ Проверить, что содержимое страницы полностью загружено. """
         start = time.time()
-        while time.time() - start < 90:
+        while time.time() - start < 240:
             loading = self.browser_worker.find_elements_by_xpath(
                 self.indicators.LOADING_PROCESS.value)
             if loading:
-                time.sleep(0.5)
+                time.sleep(3)
             else:
                 break
 
@@ -174,6 +178,7 @@ def determine_country_of_doc(number: str):
 
 
 if __name__ == '__main__':
-    international_scrapper = InternationalScrapper(Files.RESULT_FILE.value, BrowserWorker,
-                     Files.LAST_VIEWED_FOR_INTERNATIONAL.value)
-    international_scrapper.check_statuses_of_international_docs_from_xlsx_file()
+    for _ in range(10):
+        international_scrapper = InternationalScrapper(Files.RESULT_FILE.value, BrowserWorker,
+                                                       Files.LAST_VIEWED_FOR_INTERNATIONAL.value)
+        international_scrapper.check_statuses_of_international_docs_from_xlsx_file()

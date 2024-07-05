@@ -8,12 +8,11 @@ from abc import ABC, abstractmethod
 
 from selenium.common import TimeoutException, NoSuchElementException
 
-
+from monitoring.address_checkers import RusprofileAddressChecker, EgrulAddressChecker
 from monitoring.constants import (PATTERN_GOST, GostXPaths, RusProfileXPaths,
-                                  PARTS_TO_BE_REMOVED_FROM_ADDRESS, FsaXPaths,
-                                  REQUIRED_KEYS_TO_GET_FROM_FSA, NSIXPaths, PATTERNS_FOR_NSI)
-from monitoring.exceptions import (NotLoadedDocumentsOnFsaForNewNumberException, Server403Exception,
-                                   StopMonitoringException)
+                                  FsaXPaths, REQUIRED_KEYS_TO_GET_FROM_FSA,
+                                  NSIXPaths, PATTERNS_FOR_NSI)
+from monitoring.exceptions import NotLoadedForNewDocException, Server403Exception
 from monitoring.functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
 from monitoring.logger_config import logger
 from monitoring.document_dataclass import Document
@@ -22,13 +21,14 @@ from monitoring.document_dataclass import Document
 class BaseScrapper(ABC):
     """ Базовый класс для сборщиков информации с интернет - ресурсов. """
 
-    def __init__(self, browser_worker, document: Document):
+    def __init__(self, browser_worker, document: Document, ogrn_and_addresses: dict):
         self.browser_worker = browser_worker
         self.document = document
+        self.ogrn_and_addresses = ogrn_and_addresses
 
     @abstractmethod
     def process_get_data_on_document(self):
-        pass
+        """ Организация процесса сбора данных по документу. """
 
     def check_the_validity_of_all_gost_numbers(self) -> None:
         """ Если в документе есть ГОСТ, то проверить его статус на сайте проверки ГОСТ."""
@@ -49,66 +49,32 @@ class BaseScrapper(ABC):
 
     def _check_a_gost_number_on_site(self, gost_number: str) -> str:
         """ Проверить на сайте один ГОСТ."""
-        self.browser_worker.input_in_field(GostXPaths.INPUT_FIELD.value, 'ГОСТ ' + gost_number)
+        self.browser_worker.input_in_field(GostXPaths.INPUT_FIELD.value, gost_number)
         self.browser_worker.wait_and_click_element(GostXPaths.SEARCH_BUTTON.value)
-        text_from_site = self.browser_worker.get_text_from_element_by_xpath(GostXPaths.GOST_STATUS.value)
+        text_from_site = self.browser_worker.get_text_from_element_by_xpath(
+            GostXPaths.GOST_STATUS.value)
         return text_from_site
 
-    def _get_an_address_from_rusprofile(self, ogrn: str, address_field: str) -> None:
-        """ Получить адрес с сайта https://www.rusprofile.ru/ по ОГРН.
-        Если ОГРН отсутствует, то записать соответствующее сообщение."""
+    def check_captcha_error(self) -> bool:
+        """ Проверка нет ли на экране сообщения об ошибке 403."""
+        element_captcha = self.browser_worker.find_elements_by_xpath(
+            RusProfileXPaths.CAPTCHA_SECTION.value)
+        return bool(element_captcha)
 
-        if not ogrn or ogrn == 'Нет ОГРН':
-            setattr(self.document, address_field, 'Нет ОГРН')
-            return None
+    def choose_address_checker(self):
+        self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
+        if self.check_captcha_error():
+            self.browser_worker.switch_to_tab(self.browser_worker.tabs['egrul'])
+            return EgrulAddressChecker
+        return RusprofileAddressChecker
 
-        random_delay_from_1_to_3()
-        self.browser_worker.input_in_field(RusProfileXPaths.INPUT_FIELD.value, ogrn)
-        random_delay_from_1_to_3()
-        self.browser_worker.wait_and_click_element(RusProfileXPaths.SEARCH_BUTTON.value)
-        address = self.browser_worker.get_text_from_element_by_xpath(RusProfileXPaths.ADDRESS_PLACE.value)
-        setattr(self.document, address_field, address if address else 'Адрес не найден')
-
-    def compare_the_addresses(self) -> None:
-        """ Сравнить строки - адреса: 1) с сайта и 2) rusprofile.
-        Предварительно из строк(адресов) убрать обозначения, наподобие: ул. гор. и т.д.
-        затем сравнить что останется в строках. """
-        elements_to_be_removed_from_address = PARTS_TO_BE_REMOVED_FROM_ADDRESS
-
-        def _prepare_address_for_comparison(string: str) -> list:
-            """Подготовить адреса перед сравнением - убрать сокращения,
-            лишние знаки, разбить в словарь по символам."""
-            string = (string.upper().replace('.', ' ').replace('(', '').replace(')', '').
-                      replace(',', ' '))
-            # Убираем сокращения и обозначения.
-            for elem in elements_to_be_removed_from_address:
-                string = string.replace(elem, ' ')
-            return sorted(string.replace(' ', ''))
-
-        # Привести адреса к единому виду - отсортированным спискам строк.
-        applicant_address = _prepare_address_for_comparison(self.document.address_applicant)
-        applicant_address_rusprofile = _prepare_address_for_comparison(self.document.rusprofile_address_applicant)
-        manufacturer_address = _prepare_address_for_comparison(self.document.address_manufacturer)
-        manufacturer_address_rusprofile = _prepare_address_for_comparison(self.document.rusprofile_address_manufacturer)
-
-        # Сделать и внести в словарь вывод о соответствии адресов.
-        if (applicant_address == applicant_address_rusprofile and
-                manufacturer_address == manufacturer_address_rusprofile):
-            self.document.address_matching = 'Соответствуют'
-        else:
-            self.document.address_matching = 'Не соответствуют'
-
-    def get_addresses_from_rusprofile_and_make_decision_about_matching(self):
-        self._get_an_address_from_rusprofile(self.document.ogrn_applicant, 'rusprofile_address_applicant')
-        self._get_an_address_from_rusprofile(self.document.ogrn_manufacturer, 'rusprofile_address_manufacturer')
-        self.compare_the_addresses()
 
 
 class FSADeclarationScrapper(BaseScrapper):
     """Класс для сбора данных по декларациям с сайта ФСА."""
 
-    def __init__(self, browser_worker, document):
-        super().__init__(browser_worker, document)
+    def __init__(self, browser_worker, document, ogrn_and_addresses: dict):
+        super().__init__(browser_worker, document, ogrn_and_addresses)
         self.template_for_chapter_xpath = FsaXPaths.CHAPTER.value
         self.required_keys_for_collect = REQUIRED_KEYS_TO_GET_FROM_FSA
         self.request_time = 0
@@ -132,13 +98,14 @@ class FSADeclarationScrapper(BaseScrapper):
 
     def click_chapter(self, item: int) -> str:
         """ Переключить подраздел и вернуть его наименование. """
-        chapter = self.browser_worker.wait_and_click_element(self.template_for_chapter_xpath + f'[{item}]/a')
+        chapter = self.browser_worker.wait_and_click_element(
+            self.template_for_chapter_xpath + f'[{item}]/a')
         chapter = chapter.get_attribute('href')
         chapter_name = chapter[chapter.rfind('/') + 1:]
         return chapter_name
 
     def find_out_the_number_of_last_chapter(self) -> int:
-        """ Определить номер последней главы - соответственно количество итераций.  """
+        """ Определить номер последней главы - соответственно количество итераций. """
         elements = self.browser_worker.wait_until_all_elements_located_by_xpath(
             FsaXPaths.CHAPTER_FOR_LAST_ITERATION.value)
         number_of_last_chapter = len(elements)  # Номер последней итерации.
@@ -157,28 +124,34 @@ class FSADeclarationScrapper(BaseScrapper):
         return data
 
     def click_chapter_get_data(self, data: dict, item: int) -> dict:
+        """ Кликнуть по подразделу и собрать с него данные. """
         chapter_name = self.click_chapter(item)
         data = self.get_data_from_one_chapter(data, chapter_name)
         return data
 
     def save_status_on_site(self):
         """ Сохранить статус документа. """
-        self.document.status_on_site = (
-            self.browser_worker.get_text_from_element_by_xpath(FsaXPaths.DOCUMENT_STATUS.value))
+        self.document.status_on_site = (self.browser_worker.get_text_from_element_by_xpath(
+            FsaXPaths.DOCUMENT_STATUS.value))
 
     def check_403_error(self) -> bool:
         """ Проверка нет ли на экране сообщения об ошибке 403."""
         return bool(self.browser_worker.find_elements_by_xpath(FsaXPaths.ERROR_403.value))
 
     def check_service_not_available_error(self):
-        """ Проверка нет ли на экране сообщения о недоступности сервиса, если есть кликнуть 'ok'. """
+        """ Проверка нет ли на экране сообщения о недоступности сервиса,
+        если есть кликнуть 'ok'. """
         start = time.time()
         while time.time() - start < 2:
-            error = self.browser_worker.find_elements_by_xpath(FsaXPaths.SERVICE_NOT_AVAILABLE.value)
+
+            error = self.browser_worker.find_elements_by_xpath(
+                FsaXPaths.SERVICE_NOT_AVAILABLE.value)
+
             if error:
                 logger.error("Ошибка - сообщение на странице: 'Сервис недоступен'.")
                 random_delay_from_1_to_3()
-                self.browser_worker.wait_and_press_element_through_chain(FsaXPaths.SERVICE_NOT_AVAILABLE_OK_BUTTON.value)
+                self.browser_worker.wait_and_press_element_through_chain(
+                    FsaXPaths.SERVICE_NOT_AVAILABLE_OK_BUTTON.value)
                 self.browser_worker.refresh_browser()
                 return None
 
@@ -188,101 +161,153 @@ class FSADeclarationScrapper(BaseScrapper):
         while time.time() - start < timeout:
             loaded_number_on_site = self.browser_worker.get_text_from_element_by_xpath(
                 FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=2, column=3))
-            loaded_number_on_site = loaded_number_on_site[loaded_number_on_site.find('.'):]
-            number_from_gold = self.prepare_number_to_input_on_site()
+            loaded_number_on_site = re.search(r'\d{5}', loaded_number_on_site).group()
+            number_from_gold = re.search(r'\d{5}', self.document.number).group()
 
             if loaded_number_on_site == number_from_gold:
                 return True
+
         return False
 
-    def _search_correct_document_by_number_and_date(self, row):
+    def check_no_matching_records(self):
+        """ Проверить прогрузились ли документы на новый введенный номер документа. """
+        no_records_matching_the_search = self.browser_worker.get_text_from_element_by_xpath(
+            FsaXPaths.NO_RECORDS_MATCHING_THE_SEARCH.value)
+        if no_records_matching_the_search:
+            self.document.status_on_site = "Нет записей, удовлетворяющих поиску"
+
+    def _search_correct_document_by_number_and_date(self, row) -> bool:
         """ Кликнуть по документу, который подходит по дате окончания и номеру.
          Проверяем загрузились ли на странице сайта документы по новому номеру.
          Затем ищем, тот документ, который совпадает по номеру и дате истечения.
          кликаем по нему."""
-        fsa_doc_number = self.browser_worker.get_text_from_element_by_xpath(
+
+        fsa_doc_number = self.browser_worker.wait_until_element_to_be_clickable(
             FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=3))
+        text_fsa_doc_number = fsa_doc_number.text
+
         fsa_expiration_date = self.browser_worker.get_text_from_element_by_xpath(
             FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
 
-        if (fsa_doc_number == self.document.number and
+        # Условие для подходящей декларации.
+        if (text_fsa_doc_number == self.document.number and
                 fsa_expiration_date == self.document.expiration_date):
-            self.browser_worker.wait_and_click_element(FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=5))
-            self.request_time = time.time()
-            return True
+            element_with_doc_status = self.browser_worker.wait_until_element_to_be_clickable(
+                FsaXPaths.PLACE_FOR_STATUS_ON_IMAGE.value.format(row=row, column=2))
+            status_of_document = element_with_doc_status.get_property('alt')
+            self.document.status_on_site = status_of_document
+
+            # Кликаем и проваливаемся только по действующим декларациям.
+            if self.document.status_on_site in {'Действует', 'Возобновлён'}:
+                fsa_doc_number.click()
+                self.request_time = time.time()
+                return True
 
         return False
 
-    def pick_right_document(self):
-        """Обновить браузер, дождаться список документов, кликнуть по нужному документу в списке."""
+    def pick_right_document(self) -> bool:
+        """Обновить браузер, дождаться список документов,
+        кликнуть по нужному документу в списке."""
 
-        picked = False
-        i = 1
-        try:
-            while not picked:
-                picked = self._search_correct_document_by_number_and_date(i)
-                i += 1
+        count_of_rows = len(self.browser_worker.find_elements_by_xpath(
+            FsaXPaths.COUNT_OF_PAGE.value))
+
+        # Цикл по строкам на странице ФСА.
+        for i in range(2, count_of_rows + 2):
+            picked = self._search_correct_document_by_number_and_date(i)
+            if picked:
+                return True
+
+        if count_of_rows == 1:
+            if not self.check_not_valid_status():
+                logger.info(f'Не найдено подходящего по номеру и дате истечения '
+                            f'документа для № {self.document.number} на сайте ФСА.'
+                            f'Возможно указана неверная дата')
+                self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
+                return False
+
+    def check_not_valid_status(self) -> bool:
+        """ Проверка, что статус у декларации отличный от 'Недействителен'. """
+
+        fsa_doc_number = self.browser_worker.get_text_from_element_by_xpath(
+            FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=2, column=3))
+        status_on_page = self.browser_worker.wait_until_element_to_be_clickable(
+            FsaXPaths.PLACE_FOR_STATUS_ON_IMAGE.value.format(row=2, column=2))
+        status_of_document = status_on_page.get_property('alt')
+        self.document.status_on_site = status_of_document
+
+        if (fsa_doc_number == self.document.number and
+                self.document.status_on_site == 'Недействителен'):
             return True
-
-        except TimeoutException:
-            logger.error(f'Не найдено подходящего по номеру и дате истечения '
-                         f'документа для № {self.document.number} на сайте ФСА.')
-            self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
-            return False
+        return False
 
     def _get_data_on_document(self) -> dict | None:
-        """ Собрать данные по документу. """
+        """ Собрать данные по документу. Сначала - ввод и проверки:
+        доступности сервера, наличия и доступности данных. Затем непосредственно
+         сбор данных. """
         data = {}
 
-        if self.check_403_error():
+        if self.check_403_error():  # Проверка доступности сервера.
             raise Server403Exception('403 на странице')
 
-        self.input_document_number()
+        self.input_document_number()  # Ввод номера декларации.
         random_delay_from_1_to_3()
 
-        if not self.check_that_docs_for_new_number_loaded_on_page():
-            raise NotLoadedDocumentsOnFsaForNewNumberException(self.document.number)
+        # Проверка загрузки документов под введенный номер и наличия данных.
+        try:
+            if not self.check_that_docs_for_new_number_loaded_on_page():
+                raise NotLoadedForNewDocException(self.document.number)
+        except TimeoutException:
+            self.check_no_matching_records()
 
-        picked_doc = self.pick_right_document()
-        self.check_service_not_available_error()
-
-        if picked_doc:
-            self.save_status_on_site()
-
-        if self.document.status_on_site == 'Не найден на сайте, проверьте номер и дату' or not picked_doc:
+        if self.document.status_on_site == "Нет записей, удовлетворяющих поиску":
             return None
-        if self.document.status_on_site != 'ДЕЙСТВУЕТ':
+
+        if not self.pick_right_document():  # Выбрать подходящую декларацию.
+            return None
+        self.check_service_not_available_error()  # Проверка доступности сервера.
+
+        if self.document.status_on_site != 'Действует':
             self.return_to_input_document_number()
             return None
 
         # Определяем номер последней главы - количество итераций для сбора данных.
         count_of_iterations = self.find_out_the_number_of_last_chapter()
+
         # Перебираем и кликаем по подразделам на странице.
         for item in range(1, count_of_iterations + 1):
             random_delay_from_1_to_3()
             data.update(self.click_chapter_get_data(data, item))
 
-        # Возвращение на страницу для ввода номера документа.
-        self.return_to_input_document_number()
+        self.return_to_input_document_number()  # Возвращение на страницу для ввода номера.
         return data
 
     def process_get_data_on_document(self):
+        """ Организация процесса - сбора данных по документу. """
         data_from_web = self._get_data_on_document()
+
         if data_from_web:
             self.document.save_attrs_from_scrapper(data_from_web)
-            self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
-            self.get_addresses_from_rusprofile_and_make_decision_about_matching()
+            address_checker = self.choose_address_checker()
+            address_checker = address_checker(self.browser_worker,
+                                              self.document,
+                                              self.ogrn_and_addresses)
+            address_checker.get_both_addresses_from_site_and_compare()
+            self.document = address_checker.document
+            self.ogrn_and_addresses = address_checker.ogrn_and_addresses
             self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
             self.check_the_validity_of_all_gost_numbers()
 
 
 class FSACertificateScrapper(FSADeclarationScrapper):
+    """ Класс для сбора данных по сертификатам на сайте FSA. """
 
-    def __init__(self, browser_worker, document):
-        super().__init__(browser_worker, document)
+    def __init__(self, browser_worker, document, ogrn_and_addresses: dict):
+        super().__init__(browser_worker, document, ogrn_and_addresses)
         self.browser_worker.switch_to_tab(self.browser_worker.tabs['certificate'])
 
-    def return_to_input_document_number(self, xpath=FsaXPaths.RETURN_BACK_CERTIFICATION.value):
+    def return_to_input_document_number(self, xpath=
+    FsaXPaths.RETURN_BACK_CERTIFICATION.value):
         """ Вернуться на страницу для ввода номера. """
         time.sleep(random.randint(1, 3))
         self.browser_worker.wait_and_click_element(xpath)
@@ -308,12 +333,14 @@ class FSACertificateScrapper(FSADeclarationScrapper):
 
 class SgrScrapper(BaseScrapper):
     """ Класс для сбора данных по СГР. """
-    def __init__(self, browser_worker, document: Document):
-        super().__init__(browser_worker, document)
+
+    def __init__(self, browser_worker, document: Document, ogrn_and_addresses: dict):
+        super().__init__(browser_worker, document, ogrn_and_addresses)
         self.change_letter_in_number()
         self.browser_worker.switch_to_tab(self.browser_worker.tabs['nsi'])
 
     def change_letter_in_number(self):
+        """ Заменить букву в номере СГР. """
         self.document.number = self.document.number.replace('E', 'Е')
 
     def wait_till_page_loaded(self):
@@ -322,7 +349,8 @@ class SgrScrapper(BaseScrapper):
         while not loaded:
             try:
                 time.sleep(0.06)
-                self.browser_worker.find_an_element_by_class('p-datatable-loading-overlay')
+                self.browser_worker.find_an_element_by_class(
+                    'p-datatable-loading-overlay')
             except NoSuchElementException:
                 loaded = True
 
@@ -340,8 +368,11 @@ class SgrScrapper(BaseScrapper):
 
     def add_to_document_data_about_org_from_text(self, text: str, type_of_org: str,
                                                  patterns: dict) -> None:
-        """ Добавляем данные об организации в зависимости от того, как и что изложено на сайте СГР. """
+        """ Добавляем данные об организации в зависимости от того,
+        как и что изложено на сайте СГР. """
+
         name_match = re.match(patterns['name'], text)
+
         if name_match:
             address_in_brackets_match = re.search(patterns['address_in_brackets'], text)
             index_match = re.search(patterns['post_index'], text)
@@ -378,18 +409,29 @@ class SgrScrapper(BaseScrapper):
         if self.document.status_on_site != 'подписан и действует':
             return None
 
-        # Добавляем в документы данные по заявителю, производителю, документации и по остальным ключам.
-        text_applicant = self.browser_worker.get_text_from_element_by_xpath(NSIXPaths.APPLICANT.value)
-        self.add_to_document_data_about_org_from_text(text_applicant, 'applicant', PATTERNS_FOR_NSI)
-        text_manufacturer = self.browser_worker.get_text_from_element_by_xpath(NSIXPaths.MANUFACTURER.value)
-        self.add_to_document_data_about_org_from_text(text_manufacturer, 'manufacturer', PATTERNS_FOR_NSI)
+        # Добавляем в документы данные по заявителю.
+        text_applicant = self.browser_worker.get_text_from_element_by_xpath(
+            NSIXPaths.APPLICANT.value)
+        self.add_to_document_data_about_org_from_text(
+            text_applicant, 'applicant', PATTERNS_FOR_NSI)
+        # Добавляем в документы данные по производителю.
+        text_manufacturer = self.browser_worker.get_text_from_element_by_xpath(
+            NSIXPaths.MANUFACTURER.value)
+        self.add_to_document_data_about_org_from_text(
+            text_manufacturer, 'manufacturer', PATTERNS_FOR_NSI)
+        # Добавляем в документы данные по документации.
         self.document.regulatory_document = self.browser_worker.get_text_from_element_by_xpath(
             NSIXPaths.NORMATIVE_DOCUMENTS.value)
 
     def process_get_data_on_document(self):
-        """ Запустить и собрать данные по документу СГР. """
+        """ Организация процесса сбора данных по документу СГР. """
         self.get_data_from_nsi_site()
-        self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
-        self.get_addresses_from_rusprofile_and_make_decision_about_matching()
+        address_checker = self.choose_address_checker()
+        address_checker = address_checker(self.browser_worker,
+                                          self.document,
+                                          self.ogrn_and_addresses)
+        address_checker.get_both_addresses_from_site_and_compare()
+        self.document = address_checker.document
+        self.ogrn_and_addresses = address_checker.ogrn_and_addresses
         self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
         self.check_the_validity_of_all_gost_numbers()

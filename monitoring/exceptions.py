@@ -24,7 +24,7 @@ class StopMonitoringException(Exception):
         self.msg = 'Ошибка. Выход из браузера'
 
 
-class NotLoadedDocumentsOnFsaForNewNumberException(Exception):
+class NotLoadedForNewDocException(Exception):
     """Сайт ФСА заблокировал по IP и не прогружает документы для нового номера."""
     def __init__(self, number):
         super().__init__()
@@ -47,8 +47,11 @@ class FileNotExistingException(Exception):
 
 class Server403Exception(Exception):
     def __init__(self, message):
-        super().__init__(message)
-        self.msg = message
+        super().__init__()
+        self.msg = 'Ошибка 403 на сервере'
+
+    def __str__(self):
+        return self.msg
 
 
 class DocsForNewNumberNotLoadedException(Exception):
