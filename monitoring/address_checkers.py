@@ -21,9 +21,9 @@ from abc import ABC, abstractmethod
 
 import PyPDF2
 
-from monitoring.constants import (RusProfileXPaths, PARTS_TO_BE_REMOVED_FROM_ADDRESS,
+from constants import (RusProfileXPaths, PARTS_TO_BE_REMOVED_FROM_ADDRESS,
                                   EgrulXPaths, PATH_TO_DOWNLOAD_DIR)
-from monitoring.functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
+from functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
 
 
 def check_downloading_file(path_to_download_dir: str = PATH_TO_DOWNLOAD_DIR,
@@ -179,7 +179,7 @@ class EgrulAddressChecker(BaseAddressChecker):
         downloaded_file = download_path + '\\' + downloaded_file
         text_from_pdf = get_text_from_pdf_file(downloaded_file)
 
-        address_pattern = r'(Адрес юридического лица)([\s\w,/\-\.]*)(\dГРН)'
+        address_pattern = r'(Адрес юридического лица)([\s\w,/"\-\.]*)(\d\s?ГРН)'
         address_value = (re.search(address_pattern, text_from_pdf).
                          group(2).strip(' ').replace('\n', ''))
         os.remove(downloaded_file)  # Удалить файл

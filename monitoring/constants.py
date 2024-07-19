@@ -123,7 +123,6 @@ class ScreenShotsForWorkWithGold(Enum):
     FIREFOX_ICON_PANEL: str = r'.\screenshots\firefox_icon_panel.png'
     MENU_IN_GOLD: str = r'.\screenshots\menu_icon.png'
     GOLD_LOADED: str = r'.\screenshots\gold_loaded.png'
-    BACK_ICON_GOLD: str = r'.\screenshots\back_icon_gold.png'
     STOCK_11: str = r'.\screenshots\gold_11.png'
     LOGIN_PLACE: str = r'.\screenshots\login_place.png'
     PASSWORD_PLACE: str = r'.\screenshots\password_place.png'
@@ -137,6 +136,7 @@ class ScreenShotsForWorkWithGold(Enum):
     # Скриншоты для выбора действующих деклараций.
     GREEN_STATUS_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_green.png'
     GRAY_STATUS_DECLARATION = r'.\screenshots\the_declarations_status\valid_declaration_transp.png'
+    GRAY_APPROACHING_STATUS_DECLARATION = r'.\screenshots\the_declarations_status\approaching_certification.png'
     # Скриншот загрузки данных
     LOADING_PRODUCT = r'.\screenshots\loading_product.png'
     # Серое сообщение "Данные не найдены".
@@ -144,6 +144,7 @@ class ScreenShotsForWorkWithGold(Enum):
     FOR_CLICK_OK_ON_DATA_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
     # Сообщение о крахе Java".
     CRASH_JAVA = r'.\screenshots\crash_java.png'
+    SAVE_MODE = r'.\screenshots\launch_in_save_mode.png'
 
 
 class FieldsInProductCardGold(Enum):

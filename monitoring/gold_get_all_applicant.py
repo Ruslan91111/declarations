@@ -9,7 +9,7 @@ import pyautogui
 import pyperclip
 import time
 
-from gold_data_manager import GoldLauncher
+from monitoring.gold.gold_data_manager import GoldLauncher
 
 PRODUCT_NUMBER = '2000269222'
 APPLICANTS_CODES_AND_NAME = 'dict_applicant.json'

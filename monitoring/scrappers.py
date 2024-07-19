@@ -6,16 +6,16 @@ import re
 import time
 from abc import ABC, abstractmethod
 
-from selenium.common import TimeoutException, NoSuchElementException
+from selenium.common import TimeoutException, NoSuchElementException, ElementClickInterceptedException
 
-from monitoring.address_checkers import RusprofileAddressChecker, EgrulAddressChecker
-from monitoring.constants import (PATTERN_GOST, GostXPaths, RusProfileXPaths,
+from address_checkers import RusprofileAddressChecker, EgrulAddressChecker
+from constants import (PATTERN_GOST, GostXPaths, RusProfileXPaths,
                                   FsaXPaths, REQUIRED_KEYS_TO_GET_FROM_FSA,
                                   NSIXPaths, PATTERNS_FOR_NSI)
-from monitoring.exceptions import NotLoadedForNewDocException, Server403Exception
-from monitoring.functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
-from monitoring.logger_config import logger
-from monitoring.document_dataclass import Document
+from exceptions import NotLoadedForNewDocException, Server403Exception
+from functions_for_work_with_files_and_dirs import random_delay_from_1_to_3
+from logger_config import logger
+from document_dataclass import Document
 
 
 class BaseScrapper(ABC):
@@ -98,8 +98,14 @@ class FSADeclarationScrapper(BaseScrapper):
 
     def click_chapter(self, item: int) -> str:
         """ Переключить подраздел и вернуть его наименование. """
-        chapter = self.browser_worker.wait_and_click_element(
-            self.template_for_chapter_xpath + f'[{item}]/a')
+        try:
+            chapter = self.browser_worker.wait_and_click_element(
+                self.template_for_chapter_xpath + f'[{item}]/a')
+        except ElementClickInterceptedException:
+            chapter = self.browser_worker.wait_until_element_to_be_clickable(
+                self.template_for_chapter_xpath + f'[{item}]/a')
+            self.browser_worker.browser.execute_script("arguments[0].scrollIntoView(true);", chapter)
+            chapter.click()
         chapter = chapter.get_attribute('href')
         chapter_name = chapter[chapter.rfind('/') + 1:]
         return chapter_name
@@ -176,6 +182,16 @@ class FSADeclarationScrapper(BaseScrapper):
         if no_records_matching_the_search:
             self.document.status_on_site = "Нет записей, удовлетворяющих поиску"
 
+
+
+
+
+
+
+
+
+
+
     def _search_correct_document_by_number_and_date(self, row) -> bool:
         """ Кликнуть по документу, который подходит по дате окончания и номеру.
          Проверяем загрузились ли на странице сайта документы по новому номеру.
@@ -184,6 +200,7 @@ class FSADeclarationScrapper(BaseScrapper):
 
         fsa_doc_number = self.browser_worker.wait_until_element_to_be_clickable(
             FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=3))
+
         text_fsa_doc_number = fsa_doc_number.text
 
         fsa_expiration_date = self.browser_worker.get_text_from_element_by_xpath(
@@ -203,28 +220,52 @@ class FSADeclarationScrapper(BaseScrapper):
                 self.request_time = time.time()
                 return True
 
+            self.browser_worker.browser.execute_script("arguments[0].scrollIntoView(true);", fsa_doc_number)
+
+        if row == 4:
+            next_row_on_page = self.browser_worker.wait_until_element_to_be_clickable(FsaXPaths.ROW_DOCUMENT_ON_SITE.value.format(row=row, column=3))
+            self.browser_worker.browser.execute_script("arguments[0].scrollIntoView(true);", next_row_on_page)
+
         return False
 
     def pick_right_document(self) -> bool:
         """Обновить браузер, дождаться список документов,
         кликнуть по нужному документу в списке."""
 
-        count_of_rows = len(self.browser_worker.find_elements_by_xpath(
-            FsaXPaths.COUNT_OF_PAGE.value))
+        def pick_through_for(last_row):
+            for i in range(1, last_row):
+                picked = self._search_correct_document_by_number_and_date(i)
+                if picked:
+                    return True
+            return False
 
-        # Цикл по строкам на странице ФСА.
-        for i in range(2, count_of_rows + 2):
-            picked = self._search_correct_document_by_number_and_date(i)
-            if picked:
-                return True
-
+        count_of_rows = len(self.browser_worker.find_elements_by_xpath(FsaXPaths.COUNT_OF_PAGE.value))
+        picked = False
+        last_row = 0
         if count_of_rows == 1:
+            last_row = 3
+        elif count_of_rows < 4:
+            last_row = count_of_rows + 2
+        elif count_of_rows >= 4:
+            last_row = 5
+
+        picked = pick_through_for(last_row)
+        if picked:
+            return True
+        if count_of_rows >= 5:
+            picked = pick_through_for(last_row)
+
+        if count_of_rows == 1 or not picked:
             if not self.check_not_valid_status():
                 logger.info(f'Не найдено подходящего по номеру и дате истечения '
                             f'документа для № {self.document.number} на сайте ФСА.'
                             f'Возможно указана неверная дата')
                 self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
                 return False
+
+
+
+
 
     def check_not_valid_status(self) -> bool:
         """ Проверка, что статус у декларации отличный от 'Недействителен'. """

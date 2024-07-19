@@ -62,6 +62,30 @@ class Document:
         self.regulatory_document = doc_data_from_web.get('Наименование документа product', '')
         self.standard = doc_data_from_web.get('Обозначение стандарта, нормативного документа', '')
 
+    def save_attrs_from_watched(self, doc_data_from_web: dict) -> None:
+        """ Сохранить данные из просмотренных. """
+        self.save_attrs_from_scrapper(doc_data_from_web)
+        self.status_on_site = doc_data_from_web.get('Статус на сайте', '')
+
+        self.ogrn_applicant = doc_data_from_web.get(
+            'ОГРН заявителя', 'Нет ОГРН')
+        self.ogrn_manufacturer = doc_data_from_web.get(
+            'ОГРН изготовителя', 'Нет ОГРН')
+        self.address_applicant = doc_data_from_web.get('Адрес заявителя', '')
+        self.address_manufacturer = doc_data_from_web.get('Адрес изготовителя', '')
+        self.regulatory_document = doc_data_from_web.get('Наименование документа product', '')
+        self.standard = doc_data_from_web.get('Обозначение стандарта, нормативного документа', '')
+
+        self.address_applicant_from_web = doc_data_from_web.get('Адрес заявителя ЕГРЮЛ')
+        self.address_manufacturer_from_web = doc_data_from_web.get('Адрес изготовителя ЕГРЮЛ')
+        self.status_of_regulatory_documentation = doc_data_from_web.get('Статус НД')
+        self.address_matching = doc_data_from_web.get('Соответствие адресов с ЕГРЮЛ')
+        self.inspector = doc_data_from_web.get('ФИО')
+        self.date_of_inspection = doc_data_from_web.get('Дата проверки')
+
+
+
+
     def convert_document_to_pd_series(self) -> pd.Series:
         """ Конвертировать данные из документа в pd.Series """
         data = {

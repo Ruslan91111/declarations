@@ -9,7 +9,7 @@ import pandas as pd
 import psutil
 import py_win_keyboard_layout
 
-from monitoring.logger_config import logger
+from logger_config import logger
 
 
 def return_or_create_dir(path_to_dir: str):
@@ -77,6 +77,7 @@ def terminate_the_proc(process: str) -> None:
         # Если нужный процесс запущен.
         if name == process:
             proc.terminate()
+            time.sleep(10)
             break
 
 

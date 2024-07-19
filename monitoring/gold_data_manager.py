@@ -30,19 +30,19 @@ import pyperclip
 from config import LOGIN_VALUE, PASSWORD_VALUE
 from exceptions import ScreenshotNotFoundException, StopIterationInGoldException
 from logger_config import logger
-from monitoring.constants import (PATH_TO_TESSERACT, ScreenShotsForWorkWithGold as ScreenShots,
+from constants import (PATH_TO_TESSERACT, ScreenShotsForWorkWithGold as ScreenShots,
                                   FIREFOX_PROC, JAVA_PROC, FieldsInProductCardGold,
                                   Files, COLUMNS_FOR_GOLD_DF, DIR_CURRENT_MONTHLY_MONITORING)
 
-from monitoring.functions_for_work_with_files_and_dirs import (
+from functions_for_work_with_files_and_dirs import (
     write_last_viewed_number_to_file, read_last_viewed_number_from_file,
     return_or_create_xlsx_file, read_and_return_dict_from_json_file,
     check_process_in_os, return_or_create_new_df, terminate_the_proc)
-from monitoring.monitoring_in_web import make_copy_of_file_in_process
+from monitoring_in_web import make_copy_of_file_in_process
 
 # Путь к файлам Tesseract OCR и poppler
 pytesseract.pytesseract.tesseract_cmd = PATH_TO_TESSERACT
-path_to_poppler = r'.././poppler-23.11.0/Library/bin'
+path_to_poppler = r'../poppler-23.11.0/Library/bin'
 
 
 class ScreenshotWorker:
@@ -57,7 +57,7 @@ class ScreenshotWorker:
             return screenshot
 
     def search_screenshot_and_click(self, screenshot: str, timeout: int = 5,
-                                    confidence: float = 0.7) -> None | str:
+                                    confidence: float = 0.8) -> None | str:
         """ Ожидать появление скриншота в течение заданного времени.
         По появлении кликнуть по нему."""
         start_time = time.time()
@@ -74,8 +74,8 @@ class ScreenshotWorker:
         while time.time() - start_time < timeout:
             try:
                 time.sleep(0.05)
-                screenshot = self._locate_and_click(screenshot)
-                if screenshot:  # Если найден, то продолжаем его находить.
+                loading = pyautogui.locateOnScreen(screenshot, confidence=0.7)
+                if loading:  # Если найден, то продолжаем его находить.
                     pass
             except pyautogui.ImageNotFoundException:
                 return None
@@ -128,7 +128,7 @@ class ScreenshotWorker:
         # Ищем шаблон на скриншоте экрана.
         results_of_searches = cv2.matchTemplate(screenshot_for_searches,
                                                 template, cv2.TM_CCOEFF_NORMED)
-        threshold = 0.6  # Устанавливаем порог сходства.
+        threshold = 0.8  # Устанавливаем порог сходства.
         locations = np.where(results_of_searches >= threshold)  # Координаты всех совпадений.
 
         # Перебираем все совпадения и добавляем центра каждого из них в centers.
@@ -176,6 +176,19 @@ class GoldMenuNavigator(ScreenshotWorker):
                     command = "taskkill /F /IM firefox.exe"  # Команда для закрытия Firefox.
                     subprocess.run(command, shell=True)  # Выполнение команды
             finally:
+                pass
+
+    def handle_error_launch_in_save_mode(self, timeout: int = 2) -> bool | None:
+        """ При сообщении об ошибке в виде: 'Отсутствия данных' нажать 'ОК'. """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                image = self._locate_and_click(ScreenShots.SAVE_MODE.value)
+                if image:  # Если найдено сообщение об ошибке, то ищем "ОК" и кликаем по нему.
+                    self._locate_and_click(ScreenShots.FOR_CLICK_OK_ON_DATA_NOT_FOUND.value)
+                    return True
+
+            except pyautogui.ImageNotFoundException:
                 pass
 
     def navigate_menu_from_start(self) -> None:
@@ -245,6 +258,7 @@ class GoldLauncher(GoldMenuNavigator):
         # Открыть через иконку на столе.
         self.search_screenshot_and_click(ScreenShots.FIREFOX_ICON.value)
         pyautogui.press('enter')
+        self.handle_error_launch_in_save_mode()
 
     def activate_current_gold_or_launch_new_gold(self) -> None:
         """ Основная функция запуска. Определение на каком этапе
@@ -272,7 +286,7 @@ class ADocDataCollector(GoldMenuNavigator):
         """ Собираем данные в ГОЛД по одному документу из соответствующих полей."""
         doc_data = {}
         # Проверка, что провалились в декларацию.
-        self.search_screenshot_and_click(ScreenShots.DECLARATION_CARD.value, timeout=1)
+        self.search_screenshot_and_click(ScreenShots.DECLARATION_CARD.value, timeout=3)
 
         # Действия по сохранению данных в словарь, исходя из наименования поля.
         actions_for_fields = {
@@ -290,7 +304,7 @@ class ADocDataCollector(GoldMenuNavigator):
         for field in FieldsInProductCardGold:
             self.search_screenshot_and_click(field.value)
             x, y = pyautogui.position()
-            pyautogui.click(x + 100, y)
+            pyautogui.click(x + 150, y)
             # Доп действие для кода заявителя.
             if field != FieldsInProductCardGold.APPLICANT_CODE:
                 pyautogui.doubleClick()
@@ -329,10 +343,17 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
         """ После ввода кода товара в ГОЛД, ищет и возвращает координаты
         всех декларации и свидетельств, которые есть на экране по данному коду товара."""
         centers = []  # Центры деклараций.
+
         # Координаты документа с серым статусом, координаты центра добавляем в centers.
-        gray_doc_x, gray_doc_y = self.find_coords_of_screenshot_center(
-            ScreenShots.GRAY_STATUS_DECLARATION.value)
+        try:
+            gray_doc_x, gray_doc_y = self.find_coords_of_screenshot_center(
+                ScreenShots.GRAY_STATUS_DECLARATION.value)
+        except:
+            gray_doc_x, gray_doc_y = self.find_coords_of_screenshot_center(
+                ScreenShots.GRAY_APPROACHING_STATUS_DECLARATION.value)
+
         centers.append((gray_doc_x, gray_doc_y))
+
         # Координаты документов с зеленым статусом, координаты центров добавляем в centers.
         centers_of_green_docs = self.find_centers_of_copies_of_template(
             ScreenShots.GREEN_STATUS_DECLARATION.value)
@@ -374,8 +395,9 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
             error_no_data = self.handle_error_no_data_in_gold()
             if error_no_data:
                 self.handle_no_data_error(row)
-                continue
+                self.last_viewed_number_in_gold = row.name
 
+                continue
             centres_of_docs = self.search_coords_of_all_docs_on_page_in_gold()
             if centres_of_docs:  # Если найдены центры деклараций, то получаем данные.
                 self.get_data_from_all_docs_on_one_code_of_product(centres_of_docs, row)
@@ -390,17 +412,20 @@ class GoldCollector(ADocDataCollector, GoldLauncher):
         try:
             self.activate_current_gold_or_launch_new_gold()
             self.add_data_from_gold_to_result_df()
-        except (ScreenshotNotFoundException, pyperclip.PyperclipWindowsException) as error:
+        # except (ScreenshotNotFoundException, pyperclip.PyperclipWindowsException) as error:
+        except Exception as error:
             if hasattr(error, 'msg'):
                 logger.error(error.msg)
             else:
                 logger.error(error)
 
             raise StopIterationInGoldException from error
+
         finally:
             self.new_df.to_excel(self.gold_file, index=False)
             write_last_viewed_number_to_file(Files.LAST_VIEWED_IN_GOLD_NUMBER.value,
                                              self.last_viewed_number_in_gold)
+            terminate_the_proc(FIREFOX_PROC)
 
 
 def check_if_everything_is_checked_in_gold(two_columns_file: str) -> bool | None:
@@ -418,15 +443,15 @@ def check_if_everything_is_checked_in_gold(two_columns_file: str) -> bool | None
 def launch_gold_module(attempts_for_range: int, two_columns_file: str, gold_file: str) -> None:
     """ Запуск всего кода модуля. """
     for _ in range(attempts_for_range):
-        everything_is_checked = check_if_everything_is_checked_in_gold(two_columns_file, gold_file)
+        everything_is_checked = check_if_everything_is_checked_in_gold(two_columns_file)
         if everything_is_checked:
             logger.info("Все коды продуктов проверены в программе ГОЛД.")
             break
         try:
             logger.info('Не все коды продуктов проверены в программе ГОЛД.')
             gold_collector = GoldCollector(two_columns_file,
-                                           gold_file,
-                                           Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
+                                               gold_file,
+                                               Files.LAST_VIEWED_IN_GOLD_NUMBER.value)
             gold_collector.process_add_data_from_gold_to_result_df()
         except StopIterationInGoldException as error:
             logger.error(error.msg)

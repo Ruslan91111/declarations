@@ -4,7 +4,9 @@ import shutil
 import sys
 
 import pandas as pd
-
+base_path = os.path.join("C:\\Users\\impersonal\\Desktop\\declarations\\monitoring")
+if base_path not in sys.path:
+    sys.path.insert(0, base_path)
 from gold_data_manager import launch_gold_module
 from logger_config import logger
 
