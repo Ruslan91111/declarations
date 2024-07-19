@@ -15,30 +15,28 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver import ActionChains
 
-from monitoring.config import PROXY
-from monitoring.document_dataclass import Document
-from monitoring.functions_for_work_with_files_and_dirs import (
+from config import PROXY
+from document_dataclass import Document
+from functions_for_work_with_files_and_dirs import (
     write_last_viewed_number_to_file, read_last_viewed_number_from_file, return_or_create_new_df,
     return_or_create_xlsx_file, return_or_create_dir)
-from monitoring.constants import (PATH_TO_DRIVER, Files, COLUMNS_FOR_RESULT_DF,
+from constants import (PATH_TO_DRIVER, Files, COLUMNS_FOR_RESULT_DF,
                                   DIR_CURRENT_MONTHLY_MONITORING, Urls)
-from monitoring.scrappers import FSADeclarationScrapper, FSACertificateScrapper, SgrScrapper
+from scrappers import FSADeclarationScrapper, FSACertificateScrapper, SgrScrapper
 
 
 def make_browser(number_of_iteration: int):
     """ Создать экземпляр браузера со всеми необходимыми параметрами. """
-
     service = Service(PATH_TO_DRIVER)
     service.start()
     options = webdriver.ChromeOptions()
     options.add_argument("--window-size=1920,1080")
     if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
         options.add_argument(f'--proxy-server={PROXY}')
-    options.add_argument('--headless')
+    # options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
     options.add_argument(f'--user-agent={user_agent}')
-
     browser = webdriver.Chrome(service=service, options=options)
     return browser
 
@@ -54,14 +52,14 @@ def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
     словарь из ключей: ОГРН и значений: адресов юридических лиц."""
     try:
         df = pd.read_excel(result_file)
-
-        # Сформировать
         if len(df) != 0:
             df = df.dropna(subset=['ОГРН заявителя', 'Адрес заявителя',
                                    'ОГРН изготовителя', 'Адрес изготовителя'])
     except FileNotFoundError:
         return {}
+    
     ogrn_and_addresses = {}
+
     for _, row in df.iterrows():
         ogrn_and_addresses[row['ОГРН заявителя']] = row['Адрес заявителя']
         ogrn_and_addresses[row['ОГРН изготовителя']] = row['Адрес изготовителя']
@@ -71,17 +69,18 @@ def make_and_return_ogrn_and_addresses(result_file: str) -> dict:
     return ogrn_and_addresses
 
 
-def make_copy_of_file_in_process(dir_month, dir_type_of_stage, row_name, new_df):
+def make_copy_of_file_in_process(dir_month: str, dir_type_of_stage, row_name, new_df):
     """ Сделать копию файла"""
     return_or_create_dir(r'./%s/%s' % (dir_month, dir_type_of_stage))
-    copy_xlsx_file = r'./%s/%s/copy_lane_%s.xlsx' % (dir_month, dir_type_of_stage, row_name)
+    copy_xlsx_file = r'./%s/%s/copy_lane_%s.xlsx' % (
+        dir_month, dir_type_of_stage, row_name)
     new_df.to_excel(copy_xlsx_file, index=False)
     logger.info(f"Создана копия файла. Путь к файлу {copy_xlsx_file}")
 
 
-def check_if_everything_is_checked_in_web(gold_file: str, result_file: str,
-                                          file_for_last_number: str) -> bool | None:
-    """ Проверка, проверены ли все номера в ГОЛД. """
+def check_everything_is_checked_in_web(gold_file: str, result_file: str,
+                                       file_for_last_number: str) -> bool:
+    """ Проверка, проверены ли на интернет ресурсах все декларации из ГОЛД. """
     try:
         gold_df = pd.read_excel(gold_file)
         result_df = pd.read_excel(result_file)
@@ -91,7 +90,7 @@ def check_if_everything_is_checked_in_web(gold_file: str, result_file: str,
             return True
         return False
     except (KeyError, FileNotFoundError):
-        return None
+        return True
 
 
 class BrowserWorker:
@@ -235,7 +234,9 @@ class WebMonitoringWorker:
         self.result_df = return_or_create_new_df(result_file, columns=[COLUMNS_FOR_RESULT_DF])
         # Данные необходимые для мониторинга.
         self.ogrn_and_addresses = make_and_return_ogrn_and_addresses(self.result_file)
+        self.watched_docs_numbers = set(self.result_df['ДОС'])
         self.last_checked_in_web_number = read_last_viewed_number_from_file(file_for_last_number)
+        self.last_row_in_gold = read_last_viewed_number_from_file(Files.GOLD.value)
         self.number_of_iteration = number_of_iteration
         self.request_time = 0
         self.error = error
@@ -268,13 +269,28 @@ class WebMonitoringWorker:
         """ Через цикл перебираем строки в ГОЛД файле и собираем по ним данные. """
         for _, row in self.gold_df.iloc[self.last_checked_in_web_number:].iterrows():
             self.make_copy_of_web_file(row)
+
             try:
+                if self.last_row_in_gold == self.last_checked_in_web_number:
+                    logger.info("Все коды продуктов проверены на интернет ресурсах.")
+                    break
+
                 document = Document()
                 document.convert_and_save_attrs_from_gold(dict(row))
 
                 # По паттернам определяем тип документа и создаем объект определенного scrapper
                 type_of_scrapper = determine_type_of_doc(document.number)
                 logger.info(document.number)
+
+                if document.number in self.watched_docs_numbers:
+                    print('DOUBLE', document.number)
+                    df_with_same_doc = self.result_df[self.result_df['ДОС'] == document.number].reset_index()
+                    data_from_already_checked = df_with_same_doc.loc[0, 'ДОС':]
+                    document.save_attrs_from_watched(data_from_already_checked)
+                    self.result_df = self.result_df._append(document.convert_document_to_pd_series(), ignore_index=True)
+                    self.watched_docs_numbers.add(document.number)
+                    continue
+
                 if not type_of_scrapper:  # Для не подпадающего под паттерны.
                     self.result_df = self.result_df._append(row, ignore_index=True)
                     continue
@@ -283,8 +299,10 @@ class WebMonitoringWorker:
                 elapsed_time_from_last_request = time.time() - self.request_time
                 self.check_request_time(type_of_scrapper, elapsed_time_from_last_request)
 
+
                 # Инициализировать scrapper.
                 scrapper = type_of_scrapper(self.browser_worker, document, self.ogrn_and_addresses)
+
                 scrapper.process_get_data_on_document()  # Сбор данных по документу.
                 self.ogrn_and_addresses = scrapper.ogrn_and_addresses
 
@@ -299,6 +317,9 @@ class WebMonitoringWorker:
             self.result_df = self.result_df._append(
                 scrapper.document.convert_document_to_pd_series(), ignore_index=True)
             self.last_checked_in_web_number = row.name
+            self.watched_docs_numbers.add(document.number)
+
+        self.write_df_and_last_checked_number_in_files()
 
     def handle_error_in_collect_data(self, error, timeout: int) -> None:
         """ Набор действий при возникновении исключения при работе метода
@@ -330,9 +351,8 @@ def launch_checking_in_web(gold_file, result_file, count_of_iterations,
     time_of_last_error = 0
 
     for number_of_iteration in range(count_of_iterations):
-
         # Проверка все ли проверено в вебе.
-        everything_is_checked = check_if_everything_is_checked_in_web(
+        everything_is_checked = check_everything_is_checked_in_web(
             gold_file, result_file, Files.LAST_VIEWED_IN_WEB_NUMBER.value)
         if everything_is_checked:
             logger.info("Все коды продуктов проверены на интернет ресурсах.")
