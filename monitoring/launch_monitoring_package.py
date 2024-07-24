@@ -4,17 +4,20 @@ import shutil
 import sys
 
 import pandas as pd
+
+from monitoring_process.monitoring_in_web import launch_checking_in_web
+
 base_path = os.path.join("C:\\Users\\impersonal\\Desktop\\declarations\\monitoring")
 if base_path not in sys.path:
     sys.path.insert(0, base_path)
-from gold_data_manager import launch_gold_module
-from logger_config import logger
+from gold.data_manager import launch_gold_module
+from common.logger_config import logger
 
-from monitoring_in_web import launch_checking_in_web, RequiredTabsWorker
+# from monitoring.monitoring_in_web import launch_checking_in_web
 
-from exceptions import FileNotPassedException, FileNotExistingException
-from constants import Files, PATH_TO_DESKTOP, MESSAGE_FOR_USER_TO_INPUT_FILE
-from functions_for_work_with_files_and_dirs import change_layout_on_english
+from common.exceptions import FileNotPassedException, FileNotExistingException
+from common.constants import Files, PATH_TO_DESKTOP, MESSAGE_TO_INPUT_FILE
+from common.work_with_files_and_dirs import change_layout_on_english
 
 
 def create_sheet_write_codes_and_names(file_for_checking: str,
@@ -57,15 +60,14 @@ def check_or_create_file_before_checking_in_gold(checking_file):
 def launch_monitoring():
     """ Запуск программы мониторинга. """
     logger.info(" Старт программы мониторинга. ")
-    checking_file = get_name_for_matrix_file_on_desktop(MESSAGE_FOR_USER_TO_INPUT_FILE)
+    checking_file = get_name_for_matrix_file_on_desktop(MESSAGE_TO_INPUT_FILE)
     change_layout_on_english()
     check_or_create_file_before_checking_in_gold(checking_file)
     launch_gold_module(500, Files.BEFORE_GOLD.value, Files.GOLD.value)
     launch_checking_in_web(gold_file=Files.GOLD.value,
                            result_file=Files.RESULT_FILE.value,
                            count_of_iterations=500,
-                           file_for_last_number=Files.LAST_VIEWED_IN_WEB_NUMBER.value,
-                           browser_worker=RequiredTabsWorker)
+                           file_for_last_number=Files.LAST_VIEWED_IN_WEB_NUMB.value)
     logger.info("Проверка полностью завершена.")
     # Готовый результат копируем на рабочий стол.
     destination_file = os.path.join(PATH_TO_DESKTOP, os.path.basename(
