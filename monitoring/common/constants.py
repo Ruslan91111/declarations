@@ -6,13 +6,14 @@ from datetime import datetime
 from enum import Enum
 
 from common.work_with_files_and_dirs import return_or_create_dir
+from pathlib import Path
 
-import os
+BASE_DIR = Path(__file__).resolve().parent.parent
+USERNAME = os.getenv('USERNAME')
 
-print("Текущая рабочая директория:", os.getcwd())
 # Пути к файлам.
-PATH_TO_DRIVER = r'../../chromedriver.exe'
-PATH_TO_TESSERACT = r'C:\Users\impersonal\AppData\Local\Programs\Tesseract-OCR\tesseract'
+PATH_TO_DRIVER = BASE_DIR.parent / 'chromedriver.exe'
+PATH_TO_TESSERACT = f'C:\\Users\\{USERNAME}\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract'
 
 # Связанные с датой.
 MONTH_AND_YEAR = datetime.now().strftime('%B_%Y')
@@ -22,13 +23,12 @@ DATE_TODAY = datetime.now().strftime('%Y-%m-%d')
 FIREFOX_PROC = "firefox.exe"
 JAVA_PROC = "java.exe"
 
-USERNAME = os.getenv('USERNAME')
 # Директории.
 PATH_TO_DESKTOP = f"c:\\Users\\{USERNAME}\\Desktop\\"
 
 # Папка, в которой будут храниться файлы, связанные с текущей ежемесячной проверкой.
-DIR_CURRENT_MONTH = return_or_create_dir(
-    r'./files_%s' % MONTH_AND_YEAR)
+DIR_CURRENT_MONTH = return_or_create_dir(BASE_DIR.parent / f'files_{MONTH_AND_YEAR}')
+SCR_DIR = BASE_DIR / 'gold' / 'screenshots'  # SCREENSHOTS_DIR
 
 
 ##########################################################################
@@ -36,18 +36,15 @@ DIR_CURRENT_MONTH = return_or_create_dir(
 ##########################################################################
 class Files(Enum):
     """ Пути к используемым в коде файлам"""
-    LAST_VIEWED_IN_WEB_NUMB = r'.\%s\viewed_in_web_numbers_%s.txt' % (
-        DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    LAST_VIEWED_FOR_INTERN = r'.\%s\viewed_for_international_%s.txt' % (
-        DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    RESULT_FILE = r'%s\result_data_after_web_%s.xlsx' % (
-        DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    LAST_VIEWED_IN_GOLD_NUMB = r'.\%s\viewed_products_in_gold_%s.txt' % (
-        DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    BEFORE_GOLD = r'.\%s\before_check_in_gold_%s.xlsx' % (
-        DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    GOLD = r'.\%s\gold_data_%s.xlsx' % (DIR_CURRENT_MONTH, MONTH_AND_YEAR)
-    APPLICANTS_CODES_AND_NAME = r'.\monitoring\gold\dict_applicant.json'
+    LAST_VIEWED_IN_WEB_NUMB = DIR_CURRENT_MONTH / f'viewed_in_web_numbers_{MONTH_AND_YEAR}.txt'
+    LAST_VIEWED_FOR_INTERN = DIR_CURRENT_MONTH / f'viewed_for_international_{MONTH_AND_YEAR}.txt'
+    RESULT_FILE = DIR_CURRENT_MONTH / f'result_data_after_web_{MONTH_AND_YEAR}.xlsx'
+    LAST_VIEWED_IN_GOLD_NUMB = DIR_CURRENT_MONTH / f'viewed_products_in_gold_{MONTH_AND_YEAR}.txt'
+    BEFORE_GOLD = DIR_CURRENT_MONTH / f'before_check_in_gold_{MONTH_AND_YEAR}.xlsx'
+    GOLD = DIR_CURRENT_MONTH / f'gold_data_{MONTH_AND_YEAR}.xlsx'
+    APPLICANTS_CODES_AND_NAME = BASE_DIR / 'gold' / 'dict_applicant.json'
+    LOG_FILE = BASE_DIR.parent / 'log_file.log'
+
 
 class Urls(Enum):
     """ Url адреса"""
@@ -64,7 +61,7 @@ class Urls(Enum):
 class FsaXPaths(Enum):
     """XPATH для сайта Росакредитации(ФСА)"""
     CHAPTER: str = '//fgis-links-list/div/ul/li'
-    INPUT_FIELD: str =  "//fgis-text/input"
+    INPUT_FIELD: str = "//fgis-text/input"
     SEARCH_BUTTON: str = "//button[contains(text(), 'Найти')]"
     ROW_DOC_ON_SITE: str = "/*//tbody/tr[{row}]/td[{column}]"
     RETURN_BACK_DECL: str = "//fgis-rds-view-declaration-toolbar/div/div[1]"
@@ -76,7 +73,7 @@ class FsaXPaths(Enum):
     SERV_NOT_AVAILABLE: str = "//*[contains(text(), 'Сервис временно недоступен')]"
     SERV_NOT_AVAILABLE_BUTTON: str = "//*[contains(text(), 'OK')]"
     NO_MATCHING_RECORDS: str = ("//*[contains(text(), "
-                                           "'Нет записей, удовлетворяющих поиску')]")
+                                "'Нет записей, удовлетворяющих поиску')]")
     NOT_VALID_DECLARATION: str = "/*//tbody/tr[2]/td[2]//*[@alt]"
     PLACE_FOR_STATUS_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]"
     COUNT_OF_PAGE: str = r'/*//tbody//tr//*[@alt]'
@@ -115,43 +112,48 @@ class GostXPaths(Enum):
 
 class ScrForGold(Enum):
     """ Пути к скриншотам для работы с программой GOLD. """
+    DIR_DECL_STATUS = BASE_DIR / 'gold' / 'screenshots' / 'the_declarations_status'
     # Связанные с меню
-    FIREFOX_ICON: str = r'.\screenshots\appicon3.png'
-    FIREFOX_ICON_PANEL: str = r'.\screenshots\firefox_icon_panel.png'
-    MENU_IN_GOLD: str = r'.\screenshots\menu_icon.png'
-    GOLD_LOADED: str = r'.\screenshots\gold_loaded.png'
-    STOCK_11: str = r'.\screenshots\gold_11.png'
-    LOGIN_PLACE: str = r'.\screenshots\login_place.png'
-    PASSWORD_PLACE: str = r'.\screenshots\password_place.png'
-    ENTER_LOGIN: str= r'.\screenshots\enter.png'
-    MENU_33 = r'.\screenshots\menu_33.png'
-    MENU_33_4 = r'.\screenshots\33-4.png'
-    TO_SEAL_OVERDUE = r'.\screenshots\seal_overdue.png'
+    FIREFOX_ICON: str = str(SCR_DIR / 'appicon3.png')
+    FIREFOX_ICON_PANEL: str = str(SCR_DIR / 'firefox_icon_panel.png')
+    MENU_IN_GOLD: str = str(SCR_DIR / 'menu_icon.png')
+    GOLD_LOADED: str = str(SCR_DIR / 'gold_loaded.png')
+    STOCK_11: str = str(SCR_DIR / 'gold_11.png')
+    LOGIN_PLACE: str = str(SCR_DIR / 'login_place.png')
+    PASSWORD_PLACE: str = str(SCR_DIR / 'password_place.png')
+    ENTER_LOGIN: str = str(SCR_DIR / 'enter.png')
+    MENU_33: str = str(SCR_DIR / 'menu_33.png')
+    MENU_33_4: str = str(SCR_DIR / '33-4.png')
+    TO_SEAL_OVERDUE: str = str(SCR_DIR / 'seal_overdue.png')
+
     # Связанные с вводом и работой карточек товаров
-    PROD_INPUT_FIELD = r'.\screenshots\product_input_number.png'
-    DECLARATION_CARD = r'.\screenshots\declaration_card.png'
-    # Скриншоты для выбора действующих деклараций.
-    GREEN_STATUS_DECL = r'.\screenshots\the_declarations_status\valid_declaration_green.png'
-    GRAY_STATUS_DECL = r'.\screenshots\the_declarations_status\valid_declaration_transp.png'
-    GRAY_APPROACHING_DECL = \
-        r'.\screenshots\the_declarations_status\approaching_certification.png'
+    PROD_INPUT_FIELD: str = str(SCR_DIR / 'product_input_number.png')
+    DECLARATION_CARD: str = str(SCR_DIR / 'declaration_card.png')
+
+    # Скриншоты для выбора действующих деклараций
+    GREEN_STATUS_DECL: str = str(DIR_DECL_STATUS / 'valid_declaration_green.png')
+    GRAY_STATUS_DECL: str = str(DIR_DECL_STATUS / 'valid_declaration_transp.png')
+    GRAY_APPROACHING_DECL: str = str(DIR_DECL_STATUS / 'approaching_certification.png')
+
     # Скриншот загрузки данных
-    LOADING_PRODUCT = r'.\screenshots\loading_product.png'
-    # Серое сообщение "Данные не найдены".
-    MESSAGE_DATA_NOT_FOUND = r'.\screenshots\data_not_found.png'
-    OK_BUTTON_NOT_FOUND = r'.\screenshots\ok_data_not_found.png'
-    # Сообщение о крахе Java".
-    CRASH_JAVA = r'.\screenshots\crash_java.png'
-    SAVE_MODE = r'.\screenshots\launch_in_save_mode.png'
-    APPLICANT_CODE = r'.\screenshots\applicant_code.png'
+    LOADING_PRODUCT: str = str(SCR_DIR / 'loading_product.png')
+
+    # Серое сообщение "Данные не найдены"
+    MESSAGE_DATA_NOT_FOUND: str = str(SCR_DIR / 'data_not_found.png')
+    OK_BUTTON_NOT_FOUND: str = str(SCR_DIR / 'ok_data_not_found.png')
+
+    # Сообщение о крахе Java
+    CRASH_JAVA: str = str(SCR_DIR / 'crash_java.png')
+    SAVE_MODE: str = str(SCR_DIR / 'launch_in_save_mode.png')
+    APPLICANT_CODE: str = str(SCR_DIR / 'applicant_code.png')
 
 
 class ProductCardFields(Enum):
     """ Пути к скриншотам в карточке товара """
-    REG_NUMBER_FIELD = r'.\screenshots\reg_numb.png'
-    APPLICANT_CODE = r'.\screenshots\applicant_code.png'
-    MANUF_FIELD = r'.\screenshots\manufacturer_field.png'
-    DATE_OF_END = r'.\screenshots\date_of_end.png'
+    REG_NUMBER_FIELD = str(SCR_DIR / 'reg_numb.png')
+    APPLICANT_CODE = str(SCR_DIR / 'applicant_code.png')
+    MANUF_FIELD = str(SCR_DIR / 'manufacturer_field.png')
+    DATE_OF_END = str(SCR_DIR / 'date_of_end.png')
 
 
 class IndicatorsForInternationalDocs(Enum):
@@ -171,6 +173,7 @@ class IndicatorsForInternationalDocs(Enum):
     DOC_LOADED_ON_PAGE: str = f"//*[contains(text(), '{0}')]"
     STATUS_OF_DOC_ON_PAGE: str = f"//*[contains(text(),'{0}')]/../..//td[last()]"
     LOADING_PROCESS: str = '//p-progressspinner'
+
 
 ##########################################################################
 # Структуры данных с постоянными значениями
@@ -276,9 +279,9 @@ COLS_FOR_RESULT_DF = [
 ]
 
 NSI_PATTERNS = {'name': r'^.*?\"(.*?)\"',
-            'post_index': r'\d{6}',
-            'address_in_brackets': r'\[_ЮРАДРЕС_:_([^_]+)_\]',
-            'ogrn': r'\d{13}'}
+                'post_index': r'\d{6}',
+                'address_in_brackets': r'\[_ЮРАДРЕС_:_([^_]+)_\]',
+                'ogrn': r'\d{13}'}
 
 PATTERN_GOST = r"ГОСТ\s\b\d{4,5}-\d{2,4}\b"
 
@@ -296,4 +299,4 @@ class EgrulXPaths(Enum):
     GET_RECORD: str = "//button[contains(text(), 'Получить выписку')]"
 
 
-PATH_TO_DOWNLOAD_DIR = r'C:\Users\impersonal\Downloads'
+PATH_TO_DOWNLOAD_DIR = f'C:\\Users\\{USERNAME}\\Downloads'

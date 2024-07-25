@@ -23,10 +23,9 @@ from common.logger_config import logger
 
 from common.document_dataclass import Document
 from common.work_with_files_and_dirs import (write_numb_to_file,
-                                             create_copy_of_file)
-from common.constants import (Files, DIR_CURRENT_MONTH)
-from .monitoring_helpers import (choose_parser, prepare_result_df,
-                                check_request_time, HelpData)
+                                             create_copy_of_file, prepare_df_for_work)
+from common.constants import (Files, DIR_CURRENT_MONTH, COLS_FOR_RESULT_DF)
+from .monitoring_helpers import (choose_parser, check_request_time, HelpData)
 from web.work_with_browser import create_browser
 
 
@@ -41,7 +40,7 @@ class WebMonitoringWorker:
 
         self.result_file = result_file
         self.gold_df = pd.read_excel(gold_file)
-        self.result_df = prepare_result_df(self.result_file)
+        self.result_df = prepare_df_for_work(self.result_file, COLS_FOR_RESULT_DF)
         self.help_data = HelpData(
             self.result_df, self.gold_df, file_last_number_web, current_iteration,
             last_error, time_error)

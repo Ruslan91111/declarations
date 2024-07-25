@@ -28,7 +28,7 @@ from common.constants import (PATH_TO_TESSERACT, ScrForGold as ScreenShots,
 from common.work_with_files_and_dirs import (
     write_numb_to_file, read_numb_from_file,
     return_or_create_xlsx, dict_from_json_file,
-    return_or_create_new_df, terminate_the_proc, create_copy_of_file)
+    terminate_the_proc, create_copy_of_file, prepare_df_for_work)
 from gold.launch_and_navigate import GoldMenuNavigator, GoldProcess
 
 # Путь к файлам Tesseract OCR и poppler
@@ -55,7 +55,7 @@ class DocDataCollector(GoldMenuNavigator):
                 lambda value: doc_data.update({'Дата окончания': value.replace('/', '.')}),
             ProductCardFields.APPLICANT_CODE:
                 lambda value: doc_data.update(
-                    {'Заявитель': applicants_codes_and_name.get(value, 'Нет в JSON')})}
+                    {'Заявитель': applicants_codes_and_name.get(str(value), 'Нет в JSON')})}
 
         # Цикл по полям карточки продукта.
         for field in ProductCardFields:
@@ -65,7 +65,6 @@ class DocDataCollector(GoldMenuNavigator):
             # Доп действие для кода заявителя.
             if field != ProductCardFields.APPLICANT_CODE:
                 pyautogui.doubleClick()
-
             field_value = self.select_text_and_copy()
             # Сразу вызываем действие, полученное из словаря, и передаем в него field_value.
             actions_for_fields.get(field, lambda value: None)(field_value)
@@ -81,7 +80,7 @@ class GoldCollector(DocDataCollector, GoldProcess):
         self.origin_df = pd.read_excel(two_columns_file)
         self.gold_file = return_or_create_xlsx(gold_file)
         self.last_viewed_numb = read_numb_from_file(file_for_last_number)
-        self.new_df = return_or_create_new_df(self.gold_file, COLS_FOR_GOLD_DF)
+        self.new_df = prepare_df_for_work(self.gold_file, COLS_FOR_GOLD_DF)
         self.appl_codes_and_names = dict_from_json_file(
             Files.APPLICANTS_CODES_AND_NAME.value)
 

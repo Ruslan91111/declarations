@@ -39,7 +39,7 @@ def make_browser(number_of_iteration: int):
     options.add_argument("--window-size=1920,1080")
     if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
         options.add_argument(f'--proxy-server={PROXY}')
-    # options.add_argument('--headless')
+    options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
     options.add_argument(f'--user-agent={user_agent}')

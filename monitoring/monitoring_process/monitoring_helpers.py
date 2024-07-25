@@ -29,10 +29,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from common.constants import COLS_FOR_RESULT_DF
-from common.work_with_files_and_dirs import (read_numb_from_file,
-                                             return_or_create_xlsx,
-                                             return_or_create_new_df)
+from common.work_with_files_and_dirs import (read_numb_from_file)
 
 from web.parsers.sgr_parser import SgrParser
 from web.parsers.fsa_parser import FSADeclParser, FSACertParser
@@ -73,13 +70,6 @@ def choose_parser(number) -> type | None:
         if re.match(pattern, number):
             return scrapper_class
     return None
-
-
-def prepare_result_df(result_file: str):
-    """ Подготовить DataFrame для итогов мониторинга """
-    df = pd.read_excel(return_or_create_xlsx(result_file))
-    df = return_or_create_new_df(df, columns=[COLS_FOR_RESULT_DF])
-    return df
 
 
 def check_request_time(scrapper_by_type_of_doc, elapsed_time_from_last_request):

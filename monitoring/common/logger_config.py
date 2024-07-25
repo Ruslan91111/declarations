@@ -3,6 +3,7 @@
 """
 import logging
 
+from common.constants import Files
 
 logger = logging.getLogger('my_logger')
 logger.setLevel(logging.DEBUG)
@@ -12,7 +13,8 @@ if logger.hasHandlers():
     logger.handlers.clear()
 
 # Создание file handler для записи в файл
-file_handler = logging.FileHandler('../log_file.log', encoding='utf-8')
+file_handler = logging.FileHandler(Files.LOG_FILE.value, encoding='utf-8')
+
 file_handler.setLevel(logging.DEBUG)
 
 # Создание форматтера и добавление его к file handler

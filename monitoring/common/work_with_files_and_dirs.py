@@ -40,6 +40,7 @@ import json
 import os
 import random
 import time
+from pathlib import Path
 
 import openpyxl
 import pandas as pd
@@ -49,7 +50,7 @@ import py_win_keyboard_layout
 from common.logger_config import logger
 
 
-def return_or_create_dir(path_to_dir: str):
+def return_or_create_dir(path_to_dir: Path):
     """ Вернуть или создать директорию. """
     if not os.path.isdir(path_to_dir):
         os.mkdir(path_to_dir)
@@ -120,7 +121,7 @@ def terminate_the_proc(process: str) -> None:
 
 def return_or_create_new_df(df, columns):
     """Вернуть или создать DataFrame. """
-    if df is None:  # Если файл пустой, создаем DataFrame.
+    if len(df) == 0:  # Если файл пустой, создаем DataFrame.
         return pd.DataFrame(columns=columns)
     return df
 
@@ -142,3 +143,10 @@ def create_copy_of_file(dir_month: str, dir_type_of_stage, row_name, new_df):
         dir_month, dir_type_of_stage, row_name)
     new_df.to_excel(copy_xlsx_file, index=False)
     logger.info(f"Создана копия файла. Путь к файлу {copy_xlsx_file}")
+
+
+def prepare_df_for_work(result_file: str, columns: list):
+    """ Подготовить DataFrame для итогов мониторинга """
+    df = pd.read_excel(return_or_create_xlsx(result_file))
+    df = return_or_create_new_df(df, columns=columns)
+    return df

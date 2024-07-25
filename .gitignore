@@ -1,0 +1,40 @@
+# Конфигурационные файлы PyCharm
+.idea/
+*.iml
+
+# Выходные файлы
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Управление окружением
+/venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.env
+
+# Логи
+*.log
+
+# Сгенерированные файлы и зависимости
+dist/
+build/
+*.egg-info/
+
+# Самолетная документация и временные файлы
+*.tmp
+*.bak
+*.orig
+*.swp
+*.swo
+*.coverage
+.coverage.*
+.cache
+
+# Модули и пакеты
+/monitoring/common/config.py
+/monitoring/gold/dict_applicant.json
