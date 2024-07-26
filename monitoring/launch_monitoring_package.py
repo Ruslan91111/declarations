@@ -68,10 +68,13 @@ def launch_monitoring():
                            result_file=Files.RESULT_FILE.value,
                            count_of_iterations=500,
                            file_for_last_number=Files.LAST_VIEWED_IN_WEB_NUMB.value)
+
     logger.info("Проверка полностью завершена.")
+
     # Готовый результат копируем на рабочий стол.
     destination_file = os.path.join(PATH_TO_DESKTOP, os.path.basename(
         'Результат проверки мониторинга.xlsx'))
+
     shutil.copyfile(Files.RESULT_FILE.value, destination_file)
     logger.info(f'Файл скопирован на рабочий стол: {destination_file}')
     sys.exit()

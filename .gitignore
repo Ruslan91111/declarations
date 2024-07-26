@@ -36,5 +36,9 @@ build/
 .cache
 
 # Модули и пакеты
-/monitoring/common/config.py
-/monitoring/gold/dict_applicant.json
+config.py
+dict_applicant.json
+chromedriver.exe
+/poppler-23.11.0/
+/poetry.lock
+files_*_*

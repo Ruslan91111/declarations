@@ -36,7 +36,7 @@ class BaseParser(ABC):
     """ Базовый класс для сборщиков информации с интернет - ресурсов. """
 
     def __init__(self, browser_worker, document: Document, ogrn_and_addresses: dict):
-        self.browser_worker = browser_worker
+        self.browser = browser_worker
         self.document = document
         self.ogrn_and_addresses = ogrn_and_addresses
 
@@ -46,7 +46,7 @@ class BaseParser(ABC):
 
     def verify_gost_numbers(self) -> None:
         """ Если в документе есть ГОСТ, то проверить его статус на сайте проверки ГОСТ."""
-        self.browser_worker.switch_to_tab(self.browser_worker.tabs['gost'])
+        self.browser.switch_to_tab(self.browser.tabs['gost'])
         # Проверяем есть ли данные в тех полях, где могут содержаться номера ГОСТ.
         if not self.document.regulatory_document and not self.document.standard:
             return None
@@ -63,22 +63,22 @@ class BaseParser(ABC):
 
     def _verify_a_gost_numb_on_site(self, gost_number: str) -> str:
         """ Проверить на сайте один ГОСТ."""
-        self.browser_worker.input_in_field(GostXPaths.INPUT_FIELD.value, gost_number)
-        self.browser_worker.wait_and_click_elem(GostXPaths.SEARCH_BUTTON.value)
-        text_from_site = self.browser_worker.get_text_by_xpath(
+        self.browser.input_in_field(GostXPaths.INPUT_FIELD.value, gost_number)
+        self.browser.wait_and_click_elem(GostXPaths.SEARCH_BUTTON.value)
+        text_from_site = self.browser.get_text_by_xpath(
             GostXPaths.GOST_STATUS.value)
         return text_from_site
 
     def check_captcha_error(self) -> bool:
         """ Проверка нет ли на экране сообщения об ошибке 403."""
-        element_captcha = self.browser_worker.find_all_elems_by_xpath(
+        element_captcha = self.browser.find_all_elems_by_xpath(
             RusProfileXPaths.CAPTCHA_SECTION.value)
         return bool(element_captcha)
 
     def choose_address_checker(self):
         """ Выбрать класс для проверки адреса. """
-        self.browser_worker.switch_to_tab(self.browser_worker.tabs['rusprofile'])
+        self.browser.switch_to_tab(self.browser.tabs['rusprofile'])
         if self.check_captcha_error():
-            self.browser_worker.switch_to_tab(self.browser_worker.tabs['egrul'])
+            self.browser.switch_to_tab(self.browser.tabs['egrul'])
             return EgrulAddressChecker
         return RusprofileAddressChecker

@@ -29,6 +29,9 @@ PATH_TO_DESKTOP = f"c:\\Users\\{USERNAME}\\Desktop\\"
 # Папка, в которой будут храниться файлы, связанные с текущей ежемесячной проверкой.
 DIR_CURRENT_MONTH = return_or_create_dir(BASE_DIR.parent / f'files_{MONTH_AND_YEAR}')
 SCR_DIR = BASE_DIR / 'gold' / 'screenshots'  # SCREENSHOTS_DIR
+DIR_COPIES = return_or_create_dir(DIR_CURRENT_MONTH / 'copies_of_files')
+COPIES_WEB = return_or_create_dir(DIR_COPIES / 'copies_of_web')
+COPIES_GOLD = return_or_create_dir(DIR_COPIES / 'copies_of_gold')
 
 
 ##########################################################################
@@ -43,7 +46,8 @@ class Files(Enum):
     BEFORE_GOLD = DIR_CURRENT_MONTH / f'before_check_in_gold_{MONTH_AND_YEAR}.xlsx'
     GOLD = DIR_CURRENT_MONTH / f'gold_data_{MONTH_AND_YEAR}.xlsx'
     APPLICANTS_CODES_AND_NAME = BASE_DIR / 'gold' / 'dict_applicant.json'
-    LOG_FILE = BASE_DIR.parent / 'log_file.log'
+    INTERN_DOCS = DIR_CURRENT_MONTH / f'intern_docs_{MONTH_AND_YEAR}.xlsx'
+    INTERN_DOCS_RESULT = DIR_CURRENT_MONTH.parent.parent / f'международные декларации_{MONTH_AND_YEAR}.xlsx'
 
 
 class Urls(Enum):
@@ -75,7 +79,7 @@ class FsaXPaths(Enum):
     NO_MATCHING_RECORDS: str = ("//*[contains(text(), "
                                 "'Нет записей, удовлетворяющих поиску')]")
     NOT_VALID_DECLARATION: str = "/*//tbody/tr[2]/td[2]//*[@alt]"
-    PLACE_FOR_STATUS_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]"
+    STATUS_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]"
     COUNT_OF_PAGE: str = r'/*//tbody//tr//*[@alt]'
 
 
@@ -156,13 +160,13 @@ class ProductCardFields(Enum):
     DATE_OF_END = str(SCR_DIR / 'date_of_end.png')
 
 
-class IndicatorsForInternationalDocs(Enum):
+class IndicatorsForInternDocs(Enum):
     """ Xpaths для работы с сайтом проверки международных документов."""
     EXTENDED_COUNTRY_FIELD: str = '//ng-component//p-multiselect/div/p-overlay/div/div/div/div[1]'
     CLICK_TO_PICK_THE_COUNTRY: str = "//*[contains(text(), 'Страна')]"
     COUNTRY_INPUT_FIELD: str = "//p-multiselect/div/p-overlay//div[1]/div[2]/input"
     FOR_PICK_REQUIRED_COUNTRY: str = "//*[contains(text(), '{0}')]"
-    EARLY_PICKED_COUNTRY: str = ('//ng-component//div/form/div[2]/div/div[1]/div/div[2]'
+    PREVIOUS_COUNTRY: str = ('//ng-component//div/form/div[2]/div/div[1]/div/div[2]'
                                  '/p-multiselect/div/div[2]/div')
     SHOW_FILTERS: str = "//*[contains(text(), 'Показать фильтры')]"
     HIDE_FILTERS: str = "//*[contains(text(), 'Скрыть фильтры')]"
@@ -173,6 +177,8 @@ class IndicatorsForInternationalDocs(Enum):
     DOC_LOADED_ON_PAGE: str = f"//*[contains(text(), '{0}')]"
     STATUS_OF_DOC_ON_PAGE: str = f"//*[contains(text(),'{0}')]/../..//td[last()]"
     LOADING_PROCESS: str = '//p-progressspinner'
+    NOT_AVAILABLE_SERV: str = "//*[contains(text(), 'Сервис временно недоступен')]"
+    CLOSE_NOT_AVAIL_ERR: str = "//*[contains(text(), 'Закрыть')]"
 
 
 ##########################################################################
@@ -264,7 +270,6 @@ COLS_FOR_RESULT_DF = [
     'Дата окончания',
     'Изготовитель',
     'Заявитель',
-    'Поставщик из интернет-ресурса',
     'Дата проверки',
     'Статус на сайте',
     'ОГРН заявителя',

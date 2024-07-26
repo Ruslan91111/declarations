@@ -2,8 +2,12 @@
 Конфигурация логгинга.
 """
 import logging
+from pathlib import Path
 
-from common.constants import Files
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+LOG_FILE = BASE_DIR / 'log_file.log'
 
 logger = logging.getLogger('my_logger')
 logger.setLevel(logging.DEBUG)
@@ -13,7 +17,7 @@ if logger.hasHandlers():
     logger.handlers.clear()
 
 # Создание file handler для записи в файл
-file_handler = logging.FileHandler(Files.LOG_FILE.value, encoding='utf-8')
+file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
 
 file_handler.setLevel(logging.DEBUG)
 

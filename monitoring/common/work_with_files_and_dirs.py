@@ -54,10 +54,6 @@ def return_or_create_dir(path_to_dir: Path):
     """ Вернуть или создать директорию. """
     if not os.path.isdir(path_to_dir):
         os.mkdir(path_to_dir)
-        logger.info("Создана директория <%s>." % path_to_dir)
-    else:
-        logger.info("Проверено наличие директории <%s>. "
-                         "Директория существует. " % path_to_dir)
     return path_to_dir
 
 
@@ -138,12 +134,14 @@ def random_delay_from_1_to_3():
 
 def create_copy_of_file(dir_month: str, dir_type_of_stage, row_name, new_df):
     """ Сделать копию файла"""
-    return_or_create_dir(r'./%s/%s' % (dir_month, dir_type_of_stage))
-    copy_xlsx_file = r'./%s/%s/copy_lane_%s.xlsx' % (
-        dir_month, dir_type_of_stage, row_name)
+    from common.constants import COPIES_GOLD, COPIES_WEB
+    if dir_type_of_stage == 'copies_of_gold':
+        copy_xlsx_file = COPIES_GOLD / r'./copy_lane_%s.xlsx' % (row_name)
+    if dir_type_of_stage == 'copies_of_web':
+        copy_xlsx_file = COPIES_WEB / r'./copy_lane_%s.xlsx' % (row_name)
+
     new_df.to_excel(copy_xlsx_file, index=False)
     logger.info(f"Создана копия файла. Путь к файлу {copy_xlsx_file}")
-
 
 def prepare_df_for_work(result_file: str, columns: list):
     """ Подготовить DataFrame для итогов мониторинга """

@@ -26,7 +26,7 @@ from common.work_with_files_and_dirs import (write_numb_to_file,
                                              create_copy_of_file, prepare_df_for_work)
 from common.constants import (Files, DIR_CURRENT_MONTH, COLS_FOR_RESULT_DF)
 from .monitoring_helpers import (choose_parser, check_request_time, HelpData)
-from web.work_with_browser import create_browser
+from web.work_with_browser import create_browser_with_wait
 
 
 class WebMonitoringWorker:
@@ -44,7 +44,7 @@ class WebMonitoringWorker:
         self.help_data = HelpData(
             self.result_df, self.gold_df, file_last_number_web, current_iteration,
             last_error, time_error)
-        self.browser_worker = create_browser(
+        self.browser_worker = create_browser_with_wait(
             self.help_data.current_iteration, self.help_data.browser_worker)
         self.document = Document()
         self.row = None

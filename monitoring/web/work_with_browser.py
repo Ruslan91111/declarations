@@ -39,7 +39,7 @@ def make_browser(number_of_iteration: int):
     options.add_argument("--window-size=1920,1080")
     if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
         options.add_argument(f'--proxy-server={PROXY}')
-    options.add_argument('--headless')
+    # options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
     options.add_argument(f'--user-agent={user_agent}')
@@ -170,8 +170,8 @@ class MonitoringBrowser(BrowserWorker):
         return tabs
 
 
-def create_browser(current_iteration, browser_worker):
+def create_browser_with_wait(current_iteration, browser_worker, timeout: int = 30):
     """ Создать браузер для парсинга данных из интернета с объектом wait. """
     browser = make_browser(current_iteration)
-    wait = make_wait(browser, 30)
+    wait = make_wait(browser, timeout)
     return browser_worker(browser, wait)
