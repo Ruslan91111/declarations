@@ -80,31 +80,34 @@ class SgrParser(BaseParser):
     def get_all_data(self) -> None:
         """Собрать данные по свидетельству о государственной регистрации с сайта nsi.
         Вернет либо словарь, достаточный для добавления и последующей записи, либо None"""
+        self.wait_till_page_loaded()
+
         # Найти и нажать на кнопку фильтра - после которой можно ввести номер СГР
-        self.browser.wait_and_click_elem(NSIXPaths.FILTER.value)
+        try:
+            self.browser.wait_and_click_elem(NSIXPaths.FILTER.value)
+        except Exception:
+            time.sleep(3)
+            self.browser.wait_and_click_elem(NSIXPaths.FILTER.value)
+
+        self.wait_till_page_loaded()
         # Дождаться возможности ввода номера СГР, ввести и нажать поиск.
         self.browser.input_and_press_search(
             NSIXPaths.INPUT_FIELD.value, self.document.number, NSIXPaths.CHECK_MARK.value)
-        self.wait_till_page_loaded()
-        no_data = self.no_data_message()
 
-        if no_data:
+        if self.no_data_message():
             return None
-        self.document.status_on_site = self.browser.get_text_by_xpath(
-            NSIXPaths.STATUS_DOC.value)
+
+        self.document.status_on_site = self.browser.get_text_by_xpath(NSIXPaths.STATUS_DOC.value)
+
         if self.document.status_on_site != 'подписан и действует':
             return None
 
         # Добавляем в документы данные по заявителю.
-        text_applicant = self.browser.get_text_by_xpath(
-            NSIXPaths.APPLICANT.value)
-        self.append_organisation_data(
-            text_applicant, 'applicant', NSI_PATTERNS)
+        text_applicant = self.browser.get_text_by_xpath(NSIXPaths.APPLICANT.value)
+        self.append_organisation_data(text_applicant, 'applicant', NSI_PATTERNS)
         # Добавляем в документы данные по производителю.
-        text_manufacturer = self.browser.get_text_by_xpath(
-            NSIXPaths.MANUFACTURER.value)
-        self.append_organisation_data(
-            text_manufacturer, 'manufacturer', NSI_PATTERNS)
+        text_manufacturer = self.browser.get_text_by_xpath(NSIXPaths.MANUFACTURER.value)
+        self.append_organisation_data(text_manufacturer, 'manufacturer', NSI_PATTERNS)
         # Добавляем в документы данные по документации.
         self.document.regulatory_document = self.browser.get_text_by_xpath(
             NSIXPaths.NORMATIVE_DOCUMENTS.value)

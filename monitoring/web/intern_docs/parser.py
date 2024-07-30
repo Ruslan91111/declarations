@@ -21,6 +21,7 @@ class InternDocParser:
 
     def get_status_from_web(self):
         """ Проверить статус одного документа на странице сайта. """
+        self.page_loaded_check()
         self.input_and_choice_country()
         self.input_reg_number()
         self.save_status_from_page()
@@ -79,6 +80,7 @@ class InternDocParser:
         else:
             self.browser.find_all_elems_by_xpath(
                 self.indicators.DOC_LOADED_ON_PAGE.value.format(self.number))
+
             self.status = self.browser.get_text_by_xpath(
                 self.indicators.STATUS_OF_DOC_ON_PAGE.value.format(self.number))
 

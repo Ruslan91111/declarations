@@ -24,8 +24,8 @@ from common.logger_config import logger
 from common.document_dataclass import Document
 from common.work_with_files_and_dirs import (write_numb_to_file,
                                              create_copy_of_file, prepare_df_for_work)
-from common.constants import (Files, DIR_CURRENT_MONTH, COLS_FOR_RESULT_DF)
-from .monitoring_helpers import (choose_parser, check_request_time, HelpData)
+from common.constants import Files, COLS_FOR_RESULT_DF, MsgForUser
+from .monitoring_helpers import choose_parser, check_request_time, HelpData
 from web.work_with_browser import create_browser_with_wait
 
 
@@ -43,24 +43,30 @@ class WebMonitoringWorker:
         self.result_df = prepare_df_for_work(self.result_file, COLS_FOR_RESULT_DF)
         self.help_data = HelpData(
             self.result_df, self.gold_df, file_last_number_web, current_iteration,
-            last_error, time_error)
-        self.browser_worker = create_browser_with_wait(
-            self.help_data.current_iteration, self.help_data.browser_worker)
+            last_error, time_error
+        )
+
         self.document = Document()
         self.row = None
         self.site_parser = None
 
+    def create_browser(self):
+        self.browser_worker = create_browser_with_wait(self.help_data.current_iteration,
+                                                       self.help_data.browser_worker)
+
     def make_copy_of_file(self):
         """ Создать копию итогового файла"""
         if self.row.name % 500 == 0 and self.row.name != 0:
-            create_copy_of_file(DIR_CURRENT_MONTH,
-                                         'copies_of_web', self.row.name, self.result_df)
+            create_copy_of_file('copies_of_web', self.row.name, self.result_df)
 
     def write_df_and_last_number_in_files(self):
         """ Записать dataframe и номер последней просмотренной строки в файлы. """
         self.result_df.to_excel(self.result_file, index=False)
         write_numb_to_file(Files.LAST_VIEWED_IN_WEB_NUMB.value,
                            self.help_data.last_checked_in_web_number)
+
+        print(MsgForUser.CHECKED_NUMBER.value,
+              self.help_data.last_checked_in_web_number)
 
     def all_checked(self):
         """ Проверка все ли номера документов уже проверены. """
@@ -73,12 +79,11 @@ class WebMonitoringWorker:
         """ Набор действий для документа, номер которого ранее был просмотрен. """
         if self.document.number in self.help_data.watched_docs_numbers:
             df_with_same_doc = self.result_df[
-                self.result_df['ДОС'] == self.document.number
-            ].reset_index()
+                self.result_df['ДОС'] == self.document.number].reset_index()
             data_from_already_checked = df_with_same_doc.loc[0, 'ДОС':]
             self.document.save_attrs_from_prev_checked(data_from_already_checked)
             self.result_df = self.result_df._append(
-                self.document.convert_document_to_pd_series(), ignore_index=True)
+                self.document.convert_to_pd_series(), ignore_index=True)
             self.help_data.watched_docs_numbers.add(self.document.number)
             self.help_data.last_checked_in_web_number = self.row.name
             return True
@@ -89,7 +94,7 @@ class WebMonitoringWorker:
         if hasattr(self.site_parser, 'request_time'):
             self.help_data.request_time = self.site_parser.request_time
         self.result_df = self.result_df._append(
-            self.site_parser.document.convert_document_to_pd_series(),
+            self.site_parser.document.convert_to_pd_series(),
             ignore_index=True)
         self.help_data.last_checked_in_web_number = self.row.name
         self.help_data.watched_docs_numbers.add(self.document.number)
@@ -97,6 +102,10 @@ class WebMonitoringWorker:
 
     def collect_data_for_all_docs(self) -> None:
         """ Через цикл перебираем строки в gold DataFrame и собираем по ним данные. """
+        if not self.all_checked():
+            self.create_browser()
+            print(MsgForUser.NOT_ALL_CHECKED_IN_WEB.value)
+
         for _, row in self.gold_df.iloc[self.help_data.last_checked_in_web_number:].iterrows():
             self.row = row
             self.make_copy_of_file()
@@ -161,21 +170,19 @@ class WebMonitoringWorker:
         self.write_df_and_last_number_in_files()
         self.browser_worker.browser_quit()
 
-
 def launch_checking_in_web(gold_file: str, result_file: str, count_of_iterations: int,
                            file_for_last_number: str):
     """ Запуск кода из модуля в цикле."""
-    logger.info("Старт проверки данных на интернет ресурсах: ФСА, СГР, RUSPROFILE, ЕГРЮЛ, ГОСТ.")
     last_error = None
     time_of_last_error = 0
 
     # Цикл, где каждая итерация - это запуск нового браузера.
     for number_of_iteration in range(count_of_iterations):
-        logger.info("Запуск проверки документов на сайтах.")
 
         monitoring_worker = WebMonitoringWorker(
             gold_file, result_file, file_for_last_number,
-            number_of_iteration, last_error, time_of_last_error)
+            number_of_iteration, last_error, time_of_last_error
+        )
 
         monitoring_worker.collect_data_for_all_docs()
 

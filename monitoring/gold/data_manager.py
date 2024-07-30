@@ -23,7 +23,7 @@ from common.exceptions import StopIterationInGoldException
 from common.logger_config import logger
 from common.constants import (PATH_TO_TESSERACT, ScrForGold as ScreenShots,
                               FIREFOX_PROC, ProductCardFields,
-                              Files, COLS_FOR_GOLD_DF, DIR_CURRENT_MONTH)
+                              Files, COLS_FOR_GOLD_DF, MsgForUser)
 
 from common.work_with_files_and_dirs import (
     write_numb_to_file, read_numb_from_file,
@@ -86,8 +86,7 @@ class GoldCollector(DocDataCollector, GoldProcess):
 
     def make_copy_of_gold_file(self, row_name):
         """ Сделать копию ГОЛД файла"""
-        create_copy_of_file(DIR_CURRENT_MONTH, 'copies_of_gold', row_name,
-                            self.new_df)
+        create_copy_of_file('copies_of_gold', row_name, self.new_df)
 
     def handle_no_data_error(self, row):
         """ При сообщении нет данных добавление соответствующей строки в результат"""
@@ -180,13 +179,19 @@ def launch_gold_module(attempts_for_range: int, two_columns_file: str, gold_file
     """ Запуск всего кода модуля. """
     for _ in range(attempts_for_range):
         if everything_is_checked(two_columns_file):
-            logger.info("Все коды продуктов проверены в программе ГОЛД.")
+            logger.info(MsgForUser.ALL_IN_GOLD_CHECKED.value)
+            print(MsgForUser.ALL_IN_GOLD_CHECKED.value)
             break
+
         try:
-            logger.info('Не все коды продуктов проверены в программе ГОЛД.')
+            logger.info(MsgForUser.NOT_ALL_IN_GOLD_CHECKED.value)
+            print(MsgForUser.NOT_ALL_IN_GOLD_CHECKED.value)
             gold_collector = GoldCollector(two_columns_file,
                                            gold_file,
                                            Files.LAST_VIEWED_IN_GOLD_NUMB.value)
             gold_collector.process_append_data_to_result_df()
+            print(MsgForUser.ALL_IN_GOLD_CHECKED.value)
+
         except StopIterationInGoldException as error:
+            print(MsgForUser.CHECKED_NUMBER.value, gold_collector.last_viewed_numb)
             logger.error(error.msg)

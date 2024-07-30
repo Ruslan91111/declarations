@@ -89,7 +89,7 @@ class Document:
         self.inspector = doc_data_from_web.get('ФИО')
         self.date_of_inspection = doc_data_from_web.get('Дата проверки')
 
-    def convert_document_to_pd_series(self) -> pd.Series:
+    def convert_to_pd_series(self) -> pd.Series:
         """ Конвертировать данные из документа в pd.Series """
         data = {
             'Порядковый номер АМ': self.matrix_number,

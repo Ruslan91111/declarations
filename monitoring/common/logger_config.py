@@ -4,10 +4,11 @@
 import logging
 from pathlib import Path
 
+from common.constants import DIR_CURRENT_MONTH
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-LOG_FILE = BASE_DIR / 'log_file.log'
+LOG_FILE = DIR_CURRENT_MONTH / 'log_file.log'
 
 logger = logging.getLogger('my_logger')
 logger.setLevel(logging.DEBUG)
@@ -29,9 +30,9 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Создание stream handler для вывода в консоль
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-console_handler.setFormatter(formatter)
+# console_handler = logging.StreamHandler()
+# console_handler.setLevel(logging.DEBUG)
+# console_handler.setFormatter(formatter)
 
 # Добавление stream handler к логгеру
-logger.addHandler(console_handler)
+# logger.addHandler(console_handler)

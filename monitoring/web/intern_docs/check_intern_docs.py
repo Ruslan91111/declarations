@@ -20,7 +20,6 @@
 
 """
 import os
-import shutil
 import sys
 
 import pandas as pd
@@ -30,10 +29,11 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from common.constants import Files
+from common.constants import Files, MsgForUser
 from common.work_with_files_and_dirs import read_numb_from_file, write_numb_to_file
 from common.logger_config import logger
-from web.intern_docs.helpers import find_required_doc, create_intern_xlsx
+from web.intern_docs.helpers import find_required_doc
+from monitoring_process.to_finish_monitoring import create_intern_xlsx, union_result_and_intern
 from web.intern_docs.parser import InternDocParser
 
 
@@ -68,7 +68,12 @@ class InternDocCollector:
             logger.error(error)
             self.parser.check_not_available_serv()
         finally:
+            self.parser.browser.browser_quit()
             self.write_df_and_last_numb()
+            report = MsgForUser.NUMBERS_OF_INTERN_CHECKED.value.format(
+                self.last_checked_in_web_number + 1, self.last_row + 1)
+            print(report)
+            logger.info(report)
 
     def get_statuses_of_docs(self):
         """ Перебрать строки в xlsx файле с результатами мониторинга,
@@ -85,12 +90,13 @@ class InternDocCollector:
                     self.status = self.viewed_numbs[self.number]
 
                 else:
+                    self.status = None
                     self.parser.number = self.number
                     self.parser.get_status_from_web()
                     self.status = self.parser.status
                     self.viewed_numbs[self.number] = self.status
 
-                print(self.number)
+                logger.info(self.number)
                 self.df.at[iteration, 'Статус на сайте'] = self.status
                 self.last_checked_in_web_number = row.name
 
@@ -101,29 +107,27 @@ class InternDocCollector:
                            self.last_checked_in_web_number)
 
 
-def make_intern_doc_collector(
-        result_file: str = Files.INTERN_DOCS.value,
-        file_for_last_number: str = Files.LAST_VIEWED_FOR_INTERN.value):
+def make_intern_doc_collector(result_file: str = Files.INTERN_DOCS.value,
+                              file_for_last_number: str = Files.LAST_VIEWED_FOR_INTERN.value):
     """ Создать объект класса с параметрами по умолчанию. """
     return InternDocCollector(result_file, file_for_last_number)
 
 
-def launch_collect_intern_docs(range_numb: int) -> None:
-    """ Запуск кода модуля для проверки международных документов. """
-
+def check_intern_docs_file_exist():
+    """ Создать или вернуть файл с международными декларациями."""
     if not os.path.isfile(Files.INTERN_DOCS.value):
         create_intern_xlsx(Files.RESULT_FILE.value, Files.INTERN_DOCS.value)
+
+
+def launch_collect_intern_docs(range_numb: int) -> None:
+    """ Запуск кода модуля для проверки международных документов. """
+    check_intern_docs_file_exist()
 
     for _ in range(range_numb):
         collector = make_intern_doc_collector()
         collector.process_get_statuses()
-
-        if collector.current_row_numb == collector.last_row:
-            print('Все международные документы проверены.')
-            shutil.copyfile(Files.INTERN_DOCS.value, Files.INTERN_DOCS_RESULT.value)
-            logger.info(f'Файл скопирован на рабочий стол: {Files.INTERN_DOCS_RESULT.value}')
+        if collector.current_row_numb == collector.last_row != 0 and collector.status is not None:
+            logger.info(MsgForUser.ALL_INTERN_CHECKED.value)
+            print(MsgForUser.ALL_INTERN_CHECKED.value)
+            union_result_and_intern(Files.RESULT_FILE.value, Files.INTERN_DOCS.value)
             break
-
-
-if __name__ == '__main__':
-    launch_collect_intern_docs(60)

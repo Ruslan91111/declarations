@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 from enum import Enum
 
-from common.work_with_files_and_dirs import return_or_create_dir
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,6 +24,17 @@ JAVA_PROC = "java.exe"
 
 # Директории.
 PATH_TO_DESKTOP = f"c:\\Users\\{USERNAME}\\Desktop\\"
+
+
+def return_or_create_dir(path_to_dir: Path):
+    """ Вернуть или создать директорию. """
+    if not os.path.isdir(path_to_dir):
+        os.mkdir(path_to_dir)
+    return path_to_dir
+
+
+PATH_FOR_RESULTS_OF_MONITORING = return_or_create_dir(
+    BASE_DIR.parent.parent / f'итоги мониторинга {MONTH_AND_YEAR}')
 
 # Папка, в которой будут храниться файлы, связанные с текущей ежемесячной проверкой.
 DIR_CURRENT_MONTH = return_or_create_dir(BASE_DIR.parent / f'files_{MONTH_AND_YEAR}')
@@ -47,7 +57,6 @@ class Files(Enum):
     GOLD = DIR_CURRENT_MONTH / f'gold_data_{MONTH_AND_YEAR}.xlsx'
     APPLICANTS_CODES_AND_NAME = BASE_DIR / 'gold' / 'dict_applicant.json'
     INTERN_DOCS = DIR_CURRENT_MONTH / f'intern_docs_{MONTH_AND_YEAR}.xlsx'
-    INTERN_DOCS_RESULT = DIR_CURRENT_MONTH.parent.parent / f'международные декларации_{MONTH_AND_YEAR}.xlsx'
 
 
 class Urls(Enum):
@@ -181,6 +190,43 @@ class IndicatorsForInternDocs(Enum):
     CLOSE_NOT_AVAIL_ERR: str = "//*[contains(text(), 'Закрыть')]"
 
 
+DIVIDER = ('-' * 60) + '\n'
+
+
+class MsgForUser(Enum):
+
+    def __new__(cls, message):
+        # Добавляем stars перед каждым сообщением
+        obj = object.__new__(cls)
+        obj._value_ = DIVIDER + message
+        return obj
+
+    LAUNCH_OF_PROGRAM = "Запуск программы мониторинга."
+    INPUT_FILE = ('Убедитесь, что файл Excel, с товарами из матрицы, который подлежит проверке '
+                  'находится на рабочем столе.\n'
+                  'Введите название файла, без пути и расширения, после чего нажмите <Enter>.\n'
+                  'Надежнее всего скопировать наименование файла в свойствах файла\n'
+                  'или скопировать наименование файла при переименовании, '
+                  'затем вставить и нажать <Enter>\n>>>')
+    VALID_NAME_OF_FILE = 'Введено корректное название файл'
+    ALL_IN_GOLD_CHECKED = "Все коды продуктов проверены в программе ГОЛД."
+    NOT_ALL_IN_GOLD_CHECKED = 'Не все коды продуктов проверены в программе ГОЛД.'
+    CHECKED_NUMBER = 'На данной стадии проверено номеров - '
+    START_WEB_CHECKING = ("Старт проверки данных на интернет ресурсах: "
+                          "ФСА, СГР, RUSPROFILE, ЕГРЮЛ, ГОСТ.")
+    ALL_CHECKED_IN_WEB = "Все номера из матрицы проверены на интернет - сайтах. "
+    NOT_ALL_CHECKED_IN_WEB = "Не все номера из матрицы проверены на интернет - сайтах. "
+    MAIN_MONITORING_COMPLETE = "Проверка основного мониторинга полностью завершена."
+    PATH_FOR_FIN_FILE = ("Файл с проверенными декларациями в том числе и международными "
+                         "находится по пути {}")
+    ALL_INTERN_CHECKED = 'Все международные документы проверены.'
+    NUMBERS_OF_INTERN_CHECKED = 'Не все международные декларации проверены. Проверено {} из {}'
+    FILE_WRITTEN = "Файл записан по пути {}"
+    UNION_COMPLETE = ('Объедение с международными декларациями прошло успешно. '
+                      'Файл со всеми строками находится по пути {}.\n '
+                      'Файл со строками с неверными статусами находится по пути {}')
+
+
 ##########################################################################
 # Структуры данных с постоянными значениями
 ##########################################################################
@@ -289,12 +335,6 @@ NSI_PATTERNS = {'name': r'^.*?\"(.*?)\"',
                 'ogrn': r'\d{13}'}
 
 PATTERN_GOST = r"ГОСТ\s\b\d{4,5}-\d{2,4}\b"
-
-MESSAGE_TO_INPUT_FILE = (
-    'Убедитесь, что файл Excel, нуждающийся в проверке, находится на рабочем столе.\n'
-    'Введите название файла, без пути и расширения, после чего нажмите <Enter>.\n'
-    'Надежнее всего скопировать наименование файла в свойствах файла\n'
-    'или скопировать наименование файла при переименовании\n>>>')
 
 
 class EgrulXPaths(Enum):

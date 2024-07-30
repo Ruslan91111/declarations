@@ -30,12 +30,18 @@ class FileNotPassedException(Exception):
         super().__init__()
         self.msg = 'Название файла для проверки не передано. '
 
+    def __str__(self):
+        return self.msg
+
 
 class FileNotExistingException(Exception):
     """Указанный файл не существует."""
     def __init__(self):
         super().__init__()
         self.msg = 'Указанный файл не существует.'
+
+    def __str__(self):
+        return self.msg
 
 
 class Server403Exception(Exception):

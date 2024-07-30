@@ -40,21 +40,14 @@ import json
 import os
 import random
 import time
-from pathlib import Path
 
 import openpyxl
 import pandas as pd
 import psutil
 import py_win_keyboard_layout
 
+from common.constants import MsgForUser
 from common.logger_config import logger
-
-
-def return_or_create_dir(path_to_dir: Path):
-    """ Вернуть или создать директорию. """
-    if not os.path.isdir(path_to_dir):
-        os.mkdir(path_to_dir)
-    return path_to_dir
 
 
 def write_numb_to_file(file: str, number: int) -> None:
@@ -132,9 +125,10 @@ def random_delay_from_1_to_3():
     time.sleep(random.randint(1, 3))
 
 
-def create_copy_of_file(dir_month: str, dir_type_of_stage, row_name, new_df):
+def create_copy_of_file(dir_type_of_stage, row_name, new_df):
     """ Сделать копию файла"""
     from common.constants import COPIES_GOLD, COPIES_WEB
+
     if dir_type_of_stage == 'copies_of_gold':
         copy_xlsx_file = COPIES_GOLD / r'./copy_lane_%s.xlsx' % (row_name)
     if dir_type_of_stage == 'copies_of_web':
@@ -142,6 +136,7 @@ def create_copy_of_file(dir_month: str, dir_type_of_stage, row_name, new_df):
 
     new_df.to_excel(copy_xlsx_file, index=False)
     logger.info(f"Создана копия файла. Путь к файлу {copy_xlsx_file}")
+
 
 def prepare_df_for_work(result_file: str, columns: list):
     """ Подготовить DataFrame для итогов мониторинга """

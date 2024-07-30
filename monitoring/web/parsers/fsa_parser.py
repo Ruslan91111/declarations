@@ -185,8 +185,7 @@ class FSADeclParser(BaseParser):
                     return True
             return False
 
-        count_of_rows = len(
-            self.browser.find_all_elems_by_xpath(FsaXPaths.COUNT_OF_PAGE.value))
+        count_of_rows = len(self.browser.find_all_elems_by_xpath(FsaXPaths.COUNT_OF_PAGE.value))
         last_row = 3 if count_of_rows == 1 else min(count_of_rows + 2, 5)
 
         # Документ был найден в первом цикле.
@@ -198,12 +197,10 @@ class FSADeclParser(BaseParser):
             return True
 
         # Проверка на действительный статус.
-        if count_of_rows == 1 and not self.check_not_valid_status():
-            logger.info(f'Не найдено подходящего по номеру и дате истечения '
-                        f'документа для № {self.document.number} на сайте ФСА.'
-                        f'Возможно указана неверная дата')
-            self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
+        if count_of_rows == 1 and self.check_not_valid_status():
+            return True
 
+        self.document.status_on_site = 'Не найден на сайте, проверьте номер и дату'
         return False
 
     def check_not_valid_status(self) -> bool:
@@ -213,10 +210,9 @@ class FSADeclParser(BaseParser):
         status_on_page = self.browser.wait_elem_clickable(
             FsaXPaths.STATUS_ON_IMAGE.value.format(row=2, column=2))
         status_of_document = status_on_page.get_property('alt')
-        self.document.status_on_site = status_of_document
 
-        if (fsa_doc_number == self.document.number and
-                self.document.status_on_site == 'Недействителен'):
+        if fsa_doc_number == self.document.number and status_of_document == 'Недействителен':
+            self.document.status_on_site = status_of_document
             return True
         return False
 
@@ -250,7 +246,6 @@ class FSADeclParser(BaseParser):
         # Проверка доступности сервера.
         self.check_not_available_error()
         if self.document.status_on_site != 'Действует':
-            self.return_for_input_doc_numb()
             return None
 
         # Определяем номер последней главы - количество итераций для сбора данных.
