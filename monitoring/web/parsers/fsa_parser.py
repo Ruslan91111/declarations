@@ -17,7 +17,7 @@ from selenium.common import ElementClickInterceptedException, TimeoutException
 
 from common.constants import FsaXPaths, REQUIRED_DATA_KEYS_FSA
 from common.logger_config import logger
-from common.work_with_files_and_dirs import random_delay_from_1_to_3
+from common.file_worker import random_delay_from_1_to_3
 from common.exceptions import Server403Exception, NotLoadedForNewDocException
 from web.parsers.base_parser import BaseParser
 
@@ -164,11 +164,16 @@ class FSADeclParser(BaseParser):
 
             # Кликаем и проваливаемся только по действующим декларациям.
             if self.document.status_on_site in {'Действует', 'Возобновлён'}:
-                fsa_doc_numb.click()
+                try:
+                    fsa_doc_numb.click()
+                except:
+                    self.browser.browser.execute_script(
+                        "arguments[0].scrollIntoView(true);", fsa_doc_numb)
+                    fsa_doc_numb.click()
+
                 self.request_time = time.time()
-                return True
-            self.browser.browser.execute_script(
-                "arguments[0].scrollIntoView(true);", fsa_doc_numb)
+            return True
+
 
         if row == 4:
             # Прокрутить страницу к следующим документам.
@@ -193,7 +198,7 @@ class FSADeclParser(BaseParser):
             return True
 
         # Если количество строк больше 4, пробуем еще один цикл.
-        if count_of_rows >= 5 and search_cycle(last_row):
+        if count_of_rows >= 4 and search_cycle(last_row):
             return True
 
         # Проверка на действительный статус.

@@ -1,5 +1,6 @@
 """
-Константы и структуры данных с постоянными значениями.
+Константы и структуры данных с постоянными значениями, которые используются в более,
+чем в одном модуле.
 """
 import os
 from datetime import datetime
@@ -50,6 +51,7 @@ COPIES_GOLD = return_or_create_dir(DIR_COPIES / 'copies_of_gold')
 class Files(Enum):
     """ Пути к используемым в коде файлам"""
     LAST_VIEWED_IN_WEB_NUMB = DIR_CURRENT_MONTH / f'viewed_in_web_numbers_{MONTH_AND_YEAR}.txt'
+    LAST_VIEWED_DOUBLE_CHECK = DIR_CURRENT_MONTH / f'viewed_double_check_{MONTH_AND_YEAR}.txt'
     LAST_VIEWED_FOR_INTERN = DIR_CURRENT_MONTH / f'viewed_for_international_{MONTH_AND_YEAR}.txt'
     RESULT_FILE = DIR_CURRENT_MONTH / f'result_data_after_web_{MONTH_AND_YEAR}.xlsx'
     LAST_VIEWED_IN_GOLD_NUMB = DIR_CURRENT_MONTH / f'viewed_products_in_gold_{MONTH_AND_YEAR}.txt'
@@ -57,6 +59,8 @@ class Files(Enum):
     GOLD = DIR_CURRENT_MONTH / f'gold_data_{MONTH_AND_YEAR}.xlsx'
     APPLICANTS_CODES_AND_NAME = BASE_DIR / 'gold' / 'dict_applicant.json'
     INTERN_DOCS = DIR_CURRENT_MONTH / f'intern_docs_{MONTH_AND_YEAR}.xlsx'
+    DOUBLE_CHECK_GOLD = DIR_CURRENT_MONTH / f'double_check_{MONTH_AND_YEAR}.xlsx'
+    DOUBLE_CHECK_RESULT = DIR_CURRENT_MONTH / f'double_check_result_{MONTH_AND_YEAR}.xlsx'
 
 
 class Urls(Enum):
@@ -94,9 +98,8 @@ class FsaXPaths(Enum):
 
 class NSIXPaths(Enum):
     """XPATH для сайта проверки СГР"""
-    FILTER: str = '//div[3]//th[2]//button//span'
-    INPUT_FIELD: str = '/html/body/div[3]/div[1]/div/input'
-    CHECK_MARK: str = '/html/body/div[3]/div[2]/button[2]/span[1]'
+    INPUT_NUMB_FIELD: str = '//input[contains(@placeholder, "Поиск")]'
+    SEARCH_BUTTON: str = INPUT_NUMB_FIELD + '/following-sibling::button'
     STATUS_DOC: str = '//tbody/tr/td[3]/div/div/a/div/span'
     NO_DATA: str = '//tbody/tr/td'
     APPLICANT: str = '//tbody/tr/td[8]/div/div/span'
@@ -176,7 +179,7 @@ class IndicatorsForInternDocs(Enum):
     COUNTRY_INPUT_FIELD: str = "//p-multiselect/div/p-overlay//div[1]/div[2]/input"
     FOR_PICK_REQUIRED_COUNTRY: str = "//*[contains(text(), '{0}')]"
     PREVIOUS_COUNTRY: str = ('//ng-component//div/form/div[2]/div/div[1]/div/div[2]'
-                                 '/p-multiselect/div/div[2]/div')
+                             '/p-multiselect/div/div[2]/div')
     SHOW_FILTERS: str = "//*[contains(text(), 'Показать фильтры')]"
     HIDE_FILTERS: str = "//*[contains(text(), 'Скрыть фильтры')]"
     NO_DATA_ABOUT_DOC: str = "//*[contains(text(), 'Нет данных')]"
@@ -190,7 +193,7 @@ class IndicatorsForInternDocs(Enum):
     CLOSE_NOT_AVAIL_ERR: str = "//*[contains(text(), 'Закрыть')]"
 
 
-DIVIDER = ('-' * 60) + '\n'
+DIVIDER = ('*' * 60) + '\n'
 
 
 class MsgForUser(Enum):
@@ -208,15 +211,14 @@ class MsgForUser(Enum):
                   'Надежнее всего скопировать наименование файла в свойствах файла\n'
                   'или скопировать наименование файла при переименовании, '
                   'затем вставить и нажать <Enter>\n>>>')
-    VALID_NAME_OF_FILE = 'Введено корректное название файл'
+    VALID_NAME_OF_FILE = 'Указанный файл существует.'
     ALL_IN_GOLD_CHECKED = "Все коды продуктов проверены в программе ГОЛД."
     NOT_ALL_IN_GOLD_CHECKED = 'Не все коды продуктов проверены в программе ГОЛД.'
-    CHECKED_NUMBER = 'На данной стадии проверено номеров - '
-    START_WEB_CHECKING = ("Старт проверки данных на интернет ресурсах: "
-                          "ФСА, СГР, RUSPROFILE, ЕГРЮЛ, ГОСТ.")
-    ALL_CHECKED_IN_WEB = "Все номера из матрицы проверены на интернет - сайтах. "
-    NOT_ALL_CHECKED_IN_WEB = "Не все номера из матрицы проверены на интернет - сайтах. "
-    MAIN_MONITORING_COMPLETE = "Проверка основного мониторинга полностью завершена."
+    CHECKED_NUMBER = 'На данной стадии проверено номеров документов - '
+    ALL_CHECKED_IN_WEB = "Все декларации проверены на интернет - ресурсах. "
+    NOT_ALL_CHECKED_IN_WEB = ("Не все декларации из матрицы проверены на интернет - ресурсах.\n"
+                              "Продолжается проверка.")
+    MAIN_MONITORING_COMPLETE = "Все декларации проверены на интернет ресурсах."
     PATH_FOR_FIN_FILE = ("Файл с проверенными декларациями в том числе и международными "
                          "находится по пути {}")
     ALL_INTERN_CHECKED = 'Все международные документы проверены.'

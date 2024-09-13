@@ -30,10 +30,10 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from common.constants import Files, MsgForUser
-from common.work_with_files_and_dirs import read_numb_from_file, write_numb_to_file
+from common.file_worker import read_numb_from_file, write_numb_to_file
 from common.logger_config import logger
 from web.intern_docs.helpers import find_required_doc
-from monitoring_process.to_finish_monitoring import create_intern_xlsx, union_result_and_intern
+from monitoring_process.process_result_file import create_intern_xlsx, union_result_and_intern
 from web.intern_docs.parser import InternDocParser
 
 
@@ -116,14 +116,17 @@ def make_intern_doc_collector(result_file: str = Files.INTERN_DOCS.value,
 def check_intern_docs_file_exist():
     """ Создать или вернуть файл с международными декларациями."""
     if not os.path.isfile(Files.INTERN_DOCS.value):
-        create_intern_xlsx(Files.RESULT_FILE.value, Files.INTERN_DOCS.value)
+        df = pd.read_excel(Files.RESULT_FILE.value)
+        create_intern_xlsx(df, Files.INTERN_DOCS.value)
 
 
 def launch_collect_intern_docs(range_numb: int) -> None:
     """ Запуск кода модуля для проверки международных документов. """
     check_intern_docs_file_exist()
 
-    for _ in range(range_numb):
+    for iter in range(range_numb):
+        logger.info(f'Итерация по международным документам номер {iter}')
+        print(f'Итерация по международным документам номер {iter}')
         collector = make_intern_doc_collector()
         collector.process_get_statuses()
         if collector.current_row_numb == collector.last_row != 0 and collector.status is not None:
@@ -131,3 +134,6 @@ def launch_collect_intern_docs(range_numb: int) -> None:
             print(MsgForUser.ALL_INTERN_CHECKED.value)
             union_result_and_intern(Files.RESULT_FILE.value, Files.INTERN_DOCS.value)
             break
+
+if __name__ == '__main__':
+    launch_collect_intern_docs(100)

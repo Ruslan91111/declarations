@@ -52,8 +52,11 @@ class Document:
         self.product_name = doc_data_from_gold.get('Наименование товара', '')
         self.number = doc_data_from_gold.get('ДОС', '').strip()
         self.expiration_date = doc_data_from_gold.get('Дата окончания', '')
+
         if isinstance(self.expiration_date, str):
-            self.expiration_date = self.expiration_date[:6] + '20' + self.expiration_date[6:]
+            self.expiration_date = self.expiration_date[:6] + '20' + self.expiration_date[6:] \
+                if len(self.expiration_date) <= 8 else self.expiration_date
+
         self.manufacturer = doc_data_from_gold.get('Изготовитель', '')
         self.applicant = doc_data_from_gold.get('Заявитель', '')
 

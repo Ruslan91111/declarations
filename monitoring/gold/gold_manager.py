@@ -25,7 +25,7 @@ from common.constants import (PATH_TO_TESSERACT, ScrForGold as ScreenShots,
                               FIREFOX_PROC, ProductCardFields,
                               Files, COLS_FOR_GOLD_DF, MsgForUser)
 
-from common.work_with_files_and_dirs import (
+from common.file_worker import (
     write_numb_to_file, read_numb_from_file,
     return_or_create_xlsx, dict_from_json_file,
     terminate_the_proc, create_copy_of_file, prepare_df_for_work)
@@ -113,7 +113,6 @@ class GoldCollector(DocDataCollector, GoldProcess):
         """Получение данных из Gold по строкам через цикл."""
         # Перебираем построчно данные из файла с кодами и наименованиями продуктов .
         for _, row in self.origin_df[self.last_viewed_numb:].iterrows():
-
             # На каждой 500 строке сделать копию GOLD-файла(DataFrame)
             if row.name % 500 == 0 and row.name != 0:
                 self.make_copy_of_gold_file(row.name)
@@ -161,6 +160,10 @@ class GoldCollector(DocDataCollector, GoldProcess):
             write_numb_to_file(Files.LAST_VIEWED_IN_GOLD_NUMB.value,
                                self.last_viewed_numb)
             terminate_the_proc(FIREFOX_PROC)
+            msg = (f'Последний проверенный номер строки - {self.last_viewed_numb}\n'
+                   f'Последний проверенный код продукта - {self.new_df.iloc[-1]["Код товара"]}')
+            print(msg)
+            logger.info(msg)
 
 
 def everything_is_checked(two_columns_file: str) -> bool | None:

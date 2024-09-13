@@ -1,6 +1,7 @@
 """ Модуль с кодом для подготовки итоговых файлов, а также запуска проверки
 на соответствие международных деклараций. """
 import os
+import re
 from enum import Enum
 
 import pandas as pd
@@ -8,8 +9,16 @@ import pandas as pd
 from common.constants import PATH_FOR_RESULTS_OF_MONITORING, Files, MsgForUser
 from common.logger_config import logger
 
-
 COLS_FOR_MULTIINDEX = ['Порядковый номер АМ', 'Код товара', 'Наименование товара', 'ДОС']
+
+# Паттерны валидных документов
+VALID_NUMBS = [
+    r'(ЕАЭС N RU Д-[\w\.]+)',
+    r'(РОСС RU Д-[\w\.]+)',
+    r'(ТС N RU Д-[\w\.]+)',
+    r'(ЕАЭС RU С-[\w\.]+)',
+    r'(РОСС RU С-[\w\.]+)',
+    r'\w{2}\.\d{2}\.(\d{2}|\w{2})\.\d{2}\.\d{2,3}\.\w\.\d{6}\.\d{2}\.\d{2}']
 
 
 class ResultFileNames(Enum):
@@ -30,10 +39,21 @@ def remove_not_in_gold(df: pd.DataFrame) -> pd.DataFrame:
     return df[df['ДОС'] != 'Нет данных в GOLD']
 
 
+def matches_valid_doc_numb(text, patterns):
+    """ Функция, которая проверяет соответствие строки
+    одному из шаблонов деклараций. """
+    for pattern in patterns:
+        if re.match(pattern, text):
+            return True
+    return False
+
+
 def collect_df_wrong_statuses(df: pd.DataFrame) -> pd.DataFrame:
     """ Создать df только с неверными статусами. """
     df = remove_not_in_gold(df)
-    return df[~df['Статус на сайте'].isin(['подписан и действует', 'Действует', 'действует'])]
+
+    df = df[~df['Статус на сайте'].isin(['подписан и действует', 'Действует', 'действует'])]
+    return df[df['ДОС'].apply(lambda x: matches_valid_doc_numb(x, VALID_NUMBS))]
 
 
 def make_multiindex(df: pd.DataFrame, cols: list):
@@ -84,6 +104,7 @@ def split_result_file(df, name_for_full, name_with_wrong_status):
     wrong_status_df = collect_df_wrong_statuses(df)
     wrong_status_df.to_excel(name_with_wrong_status, index=False)
     print(MsgForUser.FILE_WRITTEN.value.format(name_with_wrong_status))
+
     # Удаляем индекс, устанавливаем мультииндекс и записываем в файл со всеми строками
     df.reset_index()
     make_multiindex(df, COLS_FOR_MULTIINDEX)
@@ -97,20 +118,16 @@ def finish_monitoring(result_file):
 
     # Проверяем есть ли ИТОГОВЫЙ файл с международными декларациями, если нет, то создаем.
     if not os.path.isfile(ResultFileNames.FULL_INTERN.value):
-        df = pd.read_excel(result_file)
-
-        # Разбить итоговый файл на "все строки" и "строки с неверным статусом".
-        if not os.path.isfile(ResultFileNames.FULL.value):
-            split_result_file(df, ResultFileNames.FULL.value,
-                              ResultFileNames.WRONG_STATUSES.value)
-
-        # Запуск проверки международных деклараций.
         from web.intern_docs.check_intern_docs import launch_collect_intern_docs
-        launch_collect_intern_docs(50)
+        launch_collect_intern_docs(150)
 
     else:
-
         logger.info(MsgForUser.PATH_FOR_FIN_FILE.value.format(
             ResultFileNames.FULL_INTERN.value))
         print(MsgForUser.PATH_FOR_FIN_FILE.value.format(
             ResultFileNames.FULL_INTERN.value))
+
+
+if __name__ == '__main__':
+
+    finish_monitoring(Files.RESULT_FILE.value)

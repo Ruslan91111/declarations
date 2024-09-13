@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from common.work_with_files_and_dirs import (read_numb_from_file)
+from common.file_worker import (read_numb_from_file)
 
 from web.parsers.sgr_parser import SgrParser
 from web.parsers.fsa_parser import FSADeclParser, FSACertParser

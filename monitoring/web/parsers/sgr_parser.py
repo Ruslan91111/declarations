@@ -84,20 +84,24 @@ class SgrParser(BaseParser):
 
         # Найти и нажать на кнопку фильтра - после которой можно ввести номер СГР
         try:
-            self.browser.wait_and_click_elem(NSIXPaths.FILTER.value)
+            self.browser.wait_and_click_elem(NSIXPaths.INPUT_NUMB_FIELD.value)
         except Exception:
             time.sleep(3)
-            self.browser.wait_and_click_elem(NSIXPaths.FILTER.value)
+            self.browser.wait_and_click_elem(NSIXPaths.INPUT_NUMB_FIELD.value)
 
         self.wait_till_page_loaded()
         # Дождаться возможности ввода номера СГР, ввести и нажать поиск.
         self.browser.input_and_press_search(
-            NSIXPaths.INPUT_FIELD.value, self.document.number, NSIXPaths.CHECK_MARK.value)
+            NSIXPaths.INPUT_NUMB_FIELD.value, self.document.number, NSIXPaths.SEARCH_BUTTON.value)
 
         if self.no_data_message():
             return None
 
-        self.document.status_on_site = self.browser.get_text_by_xpath(NSIXPaths.STATUS_DOC.value)
+        try:
+            self.document.status_on_site = self.browser.get_text_by_xpath(NSIXPaths.STATUS_DOC.value)
+        except:
+            if self.no_data_message():
+                return None
 
         if self.document.status_on_site != 'подписан и действует':
             return None

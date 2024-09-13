@@ -22,8 +22,8 @@ import pandas as pd
 from common.logger_config import logger
 
 from common.document_dataclass import Document
-from common.work_with_files_and_dirs import (write_numb_to_file,
-                                             create_copy_of_file, prepare_df_for_work)
+from common.file_worker import (write_numb_to_file,
+                                create_copy_of_file, prepare_df_for_work)
 from common.constants import Files, COLS_FOR_RESULT_DF, MsgForUser
 from .monitoring_helpers import choose_parser, check_request_time, HelpData
 from web.work_with_browser import create_browser_with_wait
@@ -53,9 +53,8 @@ class WebMonitoringWorker:
     def create_browser(self):
         self.browser_worker = create_browser_with_wait(self.help_data.current_iteration,
                                                        self.help_data.browser_worker)
-
     def make_copy_of_file(self):
-        """ Создать копию итогового файла"""
+        """ Создать копию итогового файла """
         if self.row.name % 500 == 0 and self.row.name != 0:
             create_copy_of_file('copies_of_web', self.row.name, self.result_df)
 
@@ -65,8 +64,10 @@ class WebMonitoringWorker:
         write_numb_to_file(Files.LAST_VIEWED_IN_WEB_NUMB.value,
                            self.help_data.last_checked_in_web_number)
 
-        print(MsgForUser.CHECKED_NUMBER.value,
-              self.help_data.last_checked_in_web_number)
+        msg = (f'Последний проверенный номер строки - {self.result_df.iloc[-1].name}\n'
+               f'Последний проверенный номер документа - {self.result_df.iloc[-1]["ДОС"]}')
+        print(msg)
+        logger.info(msg)
 
     def all_checked(self):
         """ Проверка все ли номера документов уже проверены. """
@@ -170,6 +171,7 @@ class WebMonitoringWorker:
         self.write_df_and_last_number_in_files()
         self.browser_worker.browser_quit()
 
+
 def launch_checking_in_web(gold_file: str, result_file: str, count_of_iterations: int,
                            file_for_last_number: str):
     """ Запуск кода из модуля в цикле."""
@@ -192,6 +194,7 @@ def launch_checking_in_web(gold_file: str, result_file: str, count_of_iterations
         # Проверка, все ли номера проверены в интернете.
         if gold_last_row == web_last_row:
             logger.info("Все коды продуктов проверены на интернет ресурсах.")
+
             break
 
         last_error = monitoring_worker.help_data.error

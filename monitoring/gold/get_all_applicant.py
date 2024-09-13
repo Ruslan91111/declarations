@@ -31,7 +31,7 @@ import pyautogui
 import pyperclip
 
 from common.constants import ScrForGold
-from common.work_with_files_and_dirs import dict_from_json_file
+from common.file_worker import dict_from_json_file
 from gold.launch_and_navigate import GoldProcess
 
 

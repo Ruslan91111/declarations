@@ -5,7 +5,7 @@
 import time
 
 from common.constants import Urls, IndicatorsForInternDocs
-from common.work_with_files_and_dirs import random_delay_from_1_to_3
+from common.file_worker import random_delay_from_1_to_3
 from web.intern_docs.helpers import determine_country_of_doc
 from web.work_with_browser import create_browser_with_wait, BrowserWorker
 
@@ -74,15 +74,16 @@ class InternDocParser:
 
     def save_status_from_page(self):
         """ Сохранить статус документа со страницы"""
-        if self.browser.find_all_elems_by_xpath(self.indicators.NO_DATA_ABOUT_DOC.value):
-            self.status = 'Нет данных'
 
-        else:
-            self.browser.find_all_elems_by_xpath(
-                self.indicators.DOC_LOADED_ON_PAGE.value.format(self.number))
+        try:
+            self.browser.find_all_elems_by_xpath(self.indicators.DOC_LOADED_ON_PAGE.value.format(self.number))
 
             self.status = self.browser.get_text_by_xpath(
                 self.indicators.STATUS_OF_DOC_ON_PAGE.value.format(self.number))
+
+        except:
+            if self.browser.find_all_elems_by_xpath(self.indicators.NO_DATA_ABOUT_DOC.value):
+                self.status = 'Нет данных'
 
     def page_loaded_check(self):
         """ Проверить, что содержимое страницы полностью загружено. """

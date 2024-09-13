@@ -21,7 +21,7 @@ import pyautogui
 
 from common.config import LOGIN_VALUE, PASSWORD_VALUE
 from common.constants import ScrForGold as ScreenShots, FIREFOX_PROC, JAVA_PROC
-from common.work_with_files_and_dirs import check_process_in_os
+from common.file_worker import check_process_in_os
 from common.exceptions import ScreenshotNotFoundException
 from gold.screenshot_work import ScreenshotWorker
 

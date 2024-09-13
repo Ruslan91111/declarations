@@ -129,10 +129,12 @@ def create_copy_of_file(dir_type_of_stage, row_name, new_df):
     """ Сделать копию файла"""
     from common.constants import COPIES_GOLD, COPIES_WEB
 
+    file_name = r'./copy_lane_%s.xlsx' % (str(row_name))
+
     if dir_type_of_stage == 'copies_of_gold':
-        copy_xlsx_file = COPIES_GOLD / r'./copy_lane_%s.xlsx' % (row_name)
+        copy_xlsx_file = COPIES_GOLD / file_name
     if dir_type_of_stage == 'copies_of_web':
-        copy_xlsx_file = COPIES_WEB / r'./copy_lane_%s.xlsx' % (row_name)
+        copy_xlsx_file = COPIES_WEB / file_name
 
     new_df.to_excel(copy_xlsx_file, index=False)
     logger.info(f"Создана копия файла. Путь к файлу {copy_xlsx_file}")

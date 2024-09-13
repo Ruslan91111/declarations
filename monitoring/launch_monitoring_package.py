@@ -4,18 +4,18 @@ import sys
 
 import pandas as pd
 
-from monitoring_process.to_finish_monitoring import finish_monitoring
+from monitoring_process.process_result_file import finish_monitoring, split_result_file, ResultFileNames
 from monitoring_process.monitoring_in_web import launch_checking_in_web
 
 base_path = os.path.join("C:\\Users\\impersonal\\Desktop\\declarations\\monitoring")
 if base_path not in sys.path:
     sys.path.insert(0, base_path)
-from gold.data_manager import launch_gold_module
+from gold.gold_manager import launch_gold_module
 from common.logger_config import logger
 
 from common.exceptions import FileNotPassedException, FileNotExistingException
 from common.constants import Files, PATH_TO_DESKTOP, MsgForUser
-from common.work_with_files_and_dirs import change_layout_on_english
+from common.file_worker import change_layout_on_english
 
 
 def create_gold_codes_file(file_for_checking: str,
@@ -26,8 +26,8 @@ def create_gold_codes_file(file_for_checking: str,
     """
     # Предварительно обработать dataframe. Убрать лишние первые строки и установить columns.
     df = pd.read_excel(file_for_checking)
-    df.columns = df.iloc[2]
-    df = df.drop([0, 1, 2]).reset_index(drop=True)
+    df.columns = df.iloc[0]
+    df = df.drop([0]).reset_index(drop=True)
 
     new_df = pd.DataFrame({
         'Порядковый номер АМ': range(1, len(df['Товар']) + 1),
@@ -73,9 +73,9 @@ def launch_monitoring():
     logger.info(" Старт программы мониторинга. ")
     print(MsgForUser.LAUNCH_OF_PROGRAM.value)
 
-    checking_file = get_file_name_from_user(MsgForUser.INPUT_FILE.value)
+    input_file = get_file_name_from_user(MsgForUser.INPUT_FILE.value)
     change_layout_on_english()
-    create_brief_matrix_file(checking_file)
+    create_brief_matrix_file(input_file)
     launch_gold_module(500, Files.BEFORE_GOLD.value, Files.GOLD.value)
     launch_checking_in_web(gold_file=Files.GOLD.value,
                            result_file=Files.RESULT_FILE.value,
@@ -84,7 +84,9 @@ def launch_monitoring():
 
     logger.info(MsgForUser.MAIN_MONITORING_COMPLETE.value)
     print(MsgForUser.MAIN_MONITORING_COMPLETE.value)
-    finish_monitoring(Files.RESULT_FILE.value)
+    df = pd.read_excel(Files.RESULT_FILE.value)
+    split_result_file(df, ResultFileNames.FULL.value,
+                      ResultFileNames.WRONG_STATUSES.value)
     sys.exit()
 
 
