@@ -17,7 +17,7 @@ from selenium.common import ElementClickInterceptedException, TimeoutException
 
 from common.constants import FsaXPaths, REQUIRED_DATA_KEYS_FSA
 from common.logger_config import logger
-from common.file_worker import random_delay_from_1_to_3
+from common.file_worker import random_delay
 from common.exceptions import Server403Exception, NotLoadedForNewDocException
 from web.parsers.base_parser import BaseParser
 
@@ -44,7 +44,7 @@ class FSADeclParser(BaseParser):
 
     def return_for_input_doc_numb(self, xpath=FsaXPaths.RETURN_BACK_DECL.value):
         """ После просмотра документа вернуться на страницу для ввода номера. """
-        random_delay_from_1_to_3()
+        random_delay()
         self.browser.wait_and_click_elem(xpath)
 
     def click_chapter(self, item: int) -> str:
@@ -105,7 +105,7 @@ class FSADeclParser(BaseParser):
 
             if error:
                 logger.error("Ошибка - сообщение на странице: 'Сервис недоступен'.")
-                random_delay_from_1_to_3()
+                random_delay()
                 self.browser.press_elem_through_chain(
                     FsaXPaths.SERV_NOT_AVAILABLE_BUTTON.value)
                 self.browser.refresh_browser()
@@ -131,7 +131,6 @@ class FSADeclParser(BaseParser):
         if no_records_matching_the_search:
             self.document.status_on_site = "Нет записей, удовлетворяющих поиску"
 
-
     def _is_document_appropriate(self, document_number, expiration_date):
         """ Проверка, соответствует ли документ заданному номеру и дате. """
         return (document_number == self.document.number and
@@ -140,8 +139,12 @@ class FSADeclParser(BaseParser):
     def _update_document_status(self, row):
         """ Обновить статус документа. """
         image_with_status = self.browser.wait_elem_clickable(
-                FsaXPaths.STATUS_ON_IMAGE.value.format(row=row, column=2))
+            FsaXPaths.STATUS_ON_IMAGE.value.format(row=row, column=2))
+
+        href_value = self.browser.wait_elem_clickable(
+            FsaXPaths.HREF_ON_IMAGE.value.format(row=row, column=2)).get_attribute('href')
         self.document.status_on_site = image_with_status.get_property('alt')
+        self.document.url = href_value
 
     def _scroll_to_next_row(self, row):
         """ Прокрутить к следующей строке документа. """
@@ -174,7 +177,6 @@ class FSADeclParser(BaseParser):
                 self.request_time = time.time()
             return True
 
-
         if row == 4:
             # Прокрутить страницу к следующим документам.
             self._scroll_to_next_row(row)
@@ -183,6 +185,7 @@ class FSADeclParser(BaseParser):
 
     def search_correct_document(self) -> bool:
         """ Поиск на странице подходящего документа. """
+
         def search_cycle(last_row: int) -> bool:
             """ Цикл для поиска корректного документа."""
             for i in range(1, last_row):
@@ -221,18 +224,34 @@ class FSADeclParser(BaseParser):
             return True
         return False
 
+    def check_working_page(self):
+        """ Проверка доступности страницы ФСА. """
+        try:
+            self.browser.find_elem_by_xpath(
+                r"//*[contains(text(), 'Сервис временно недоступен')]")
+            self.browser.refresh_browser()
+            unavailable = True
+            while unavailable:
+                time.sleep(60 * 15)
+                self.browser.refresh_browser()
+                time.sleep(2)
+                unavailable = self.check_403_error()
+        except:
+            pass
+
     def _get_data_on_document(self) -> dict | None:
         """ Собрать данные по документу. Сначала - ввод и проверки:
         доступности сервера, наличия и доступности данных. Затем непосредственно
          сбор данных. """
         data = {}
 
+        self.check_working_page()
         if self.check_403_error():  # Проверка доступности сервера.
             raise Server403Exception('403 на странице')
 
         # Ввод номера декларации.
         self.input_doc_numb()
-        random_delay_from_1_to_3()
+        random_delay()
 
         # Проверка загрузки документов под введенный номер и наличия данных.
         try:
@@ -253,12 +272,13 @@ class FSADeclParser(BaseParser):
         if self.document.status_on_site != 'Действует':
             return None
 
+
         # Определяем номер последней главы - количество итераций для сбора данных.
         count_of_iterations = self.get_last_chapter_numb()
 
         # Перебираем и кликаем по подразделам на странице.
         for item in range(1, count_of_iterations + 1):
-            random_delay_from_1_to_3()
+            random_delay()
             data.update(self.click_chapter_get_data(data, item))
 
         self.return_for_input_doc_numb()  # Возвращение на страницу для ввода номера.

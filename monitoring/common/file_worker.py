@@ -120,9 +120,9 @@ def change_layout_on_english():
     py_win_keyboard_layout.change_foreground_window_keyboard_layout(0x04090409)
 
 
-def random_delay_from_1_to_3():
+def random_delay():
     """ Выполнить случайную задержку. """
-    time.sleep(random.randint(1, 3))
+    time.sleep(random.randint(3, 5))
 
 
 def create_copy_of_file(dir_type_of_stage, row_name, new_df):

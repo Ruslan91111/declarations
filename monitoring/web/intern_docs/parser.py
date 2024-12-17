@@ -5,7 +5,7 @@
 import time
 
 from common.constants import Urls, IndicatorsForInternDocs
-from common.file_worker import random_delay_from_1_to_3
+from common.file_worker import random_delay
 from web.intern_docs.helpers import determine_country_of_doc
 from web.work_with_browser import create_browser_with_wait, BrowserWorker
 
@@ -35,7 +35,7 @@ class InternDocParser:
         self.check_extended_country_field()
         # Ввести название страны.
         self.browser.input_in_field(self.indicators.COUNTRY_INPUT_FIELD.value, self.doc_country)
-        random_delay_from_1_to_3()
+        random_delay()
         # Выбрать нужную страну
         self.browser.wait_and_click_elem(
             self.indicators.FOR_PICK_REQUIRED_COUNTRY.value.format(self.doc_country))
@@ -60,9 +60,9 @@ class InternDocParser:
         """ Нажать на фильтры, ввести номер, нажать применить."""
         self.filters_check()
         # Ввести регистрационный номер
-        self.browser.wait_and_click_elem(self.indicators.REG_NUMBER_INPUT_FIELD.value)
-        random_delay_from_1_to_3()
-        self.browser.input_in_field(self.indicators.REG_NUMBER_INPUT_FIELD.value, self.number)
+        self.browser.wait_and_click_elem(self.indicators.REG_NUMBER_FIELD.value)
+        random_delay()
+        self.browser.input_in_field(self.indicators.REG_NUMBER_FIELD.value, self.number)
         # Кликнуть по кнопке применить.
         self.browser.wait_and_click_elem(self.indicators.BUTTON_APPLY_FILTERS.value)
         self.page_loaded_check()

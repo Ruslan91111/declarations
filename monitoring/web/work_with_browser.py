@@ -19,6 +19,8 @@
         Класс для работы с браузером при веб-мониторинге, дополнен созданием необходимых вкладок.
 
 """
+import time
+
 from fake_useragent import UserAgent
 from selenium import webdriver
 from selenium.webdriver import ActionChains
@@ -37,12 +39,12 @@ def make_browser(number_of_iteration: int):
     service.start()
     options = webdriver.ChromeOptions()
     options.add_argument("--window-size=1920,1080")
-    if number_of_iteration % 2 == 0:  # Подключать прокси на четных итерациях.
+    if number_of_iteration % 2 != 0:  # Подключать прокси на четных итерациях.
         options.add_argument(f'--proxy-server={PROXY}')
     # options.add_argument('--headless')
     ua = UserAgent()
     user_agent = ua.random
-    options.add_argument(f'--user-agent={user_agent}')
+    # options.add_argument(f'--user-agent={user_agent}')
     browser = webdriver.Chrome(service=service, options=options)
     return browser
 
@@ -93,6 +95,11 @@ class BrowserWorker:
     def find_elem_by_class(self, class_name):
         """ Найти элемент по классу. """
         element = self.browser.find_element(By.CLASS_NAME, class_name)
+        return element
+
+    def find_elem_by_xpath(self, xpath):
+        """ Найти элемент по классу. """
+        element = self.browser.find_element(By.XPATH, xpath)
         return element
 
     def find_all_elems_by_class(self, class_name):
@@ -156,16 +163,23 @@ class MonitoringBrowser(BrowserWorker):
     def __init__(self, browser, wait):
         super().__init__(browser, wait)
         self.tabs = self.make_all_required_tabs()
+        self.switch_to_tab(self.tabs['declaration'])
+        self.wait_and_click_elem("//*[contains(text(), 'Старый интерфейс')]")
+        time.sleep(1)
+        self.switch_to_tab(self.tabs['certificate'])
+        self.wait_and_click_elem("//*[contains(text(), 'Старый интерфейс')]")
+        time.sleep(2)
 
     def make_all_required_tabs(self) -> dict:
         """Создать все 6 необходимых вкладок в браузере."""
 
         tabs = {'declaration': self.make_new_tab(Urls.FSA_DECLARATION.value),
-                'certificate': self.make_new_tab(Urls.FSA_CERTIFICATE.value),
                 'nsi': self.make_new_tab(Urls.NSI.value),
                 'rusprofile': self.make_new_tab(Urls.RUSPROFILE.value),
                 'gost': self.make_new_tab(Urls.GOST.value),
-                'egrul': self.make_new_tab(Urls.EGRUL.value)}
+                'egrul': self.make_new_tab(Urls.EGRUL.value),
+                'certificate': self.make_new_tab(Urls.FSA_CERTIFICATE.value),
+                }
 
         return tabs
 

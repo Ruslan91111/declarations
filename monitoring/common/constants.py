@@ -72,7 +72,7 @@ class Urls(Enum):
     GOST: str = "https://etr-torgi.ru/calc/check_gost/"
     NSI: str = f'https://nsi.eaeunion.org/portal/1995?date={DATE_TODAY}'
     INTERNATIONAL_DOCS: str = \
-        r'https://tech.eaeunion.org/registers/35-1/ru/registryList/conformityDocs'
+        r'https://tech.eaeunion.org/tech/registers/35-1/ru'
 
 
 class FsaXPaths(Enum):
@@ -93,6 +93,7 @@ class FsaXPaths(Enum):
                                 "'Нет записей, удовлетворяющих поиску')]")
     NOT_VALID_DECLARATION: str = "/*//tbody/tr[2]/td[2]//*[@alt]"
     STATUS_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]"
+    HREF_ON_IMAGE: str = "/*//tbody/tr[{row}]/td[{column}]//*[@alt]/../.."
     COUNT_OF_PAGE: str = r'/*//tbody//tr//*[@alt]'
 
 
@@ -178,12 +179,11 @@ class IndicatorsForInternDocs(Enum):
     CLICK_TO_PICK_THE_COUNTRY: str = "//*[contains(text(), 'Страна')]"
     COUNTRY_INPUT_FIELD: str = "//p-multiselect/div/p-overlay//div[1]/div[2]/input"
     FOR_PICK_REQUIRED_COUNTRY: str = "//*[contains(text(), '{0}')]"
-    PREVIOUS_COUNTRY: str = ('//ng-component//div/form/div[2]/div/div[1]/div/div[2]'
-                             '/p-multiselect/div/div[2]/div')
+    PREVIOUS_COUNTRY: str = ('//*/p-multiselect/div/div[2]/div')
     SHOW_FILTERS: str = "//*[contains(text(), 'Показать фильтры')]"
     HIDE_FILTERS: str = "//*[contains(text(), 'Скрыть фильтры')]"
     NO_DATA_ABOUT_DOC: str = "//*[contains(text(), 'Нет данных')]"
-    REG_NUMBER_FIELD: str = "//*[contains(text(),'Регистрационный номер документа')]"
+    REG_NUMBER_FIELD: str = "//input[contains(@formcontrolname,'DocId')]"
     REG_NUMBER_INPUT_FIELD: str = "//ng-component//div/form/div[3]/div/div/div[1]/div[2]/input"
     BUTTON_APPLY_FILTERS: str = "//*[contains(text(),'Применить')]"
     DOC_LOADED_ON_PAGE: str = f"//*[contains(text(), '{0}')]"
@@ -329,6 +329,7 @@ COLS_FOR_RESULT_DF = [
     'Адрес изготовителя ЕГРЮЛ',
     'Статус НД',
     'ФИО',
+    'url'
 ]
 
 NSI_PATTERNS = {'name': r'^.*?\"(.*?)\"',

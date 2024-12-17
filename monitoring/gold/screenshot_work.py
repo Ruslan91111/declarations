@@ -71,7 +71,7 @@ class ScreenshotWorker:
 
     def find_coords_of_scr_center(self, screenshot: str):
         """ Найти и вернуть координаты центра нужного скриншота по x и y. """
-        screenshot = self.search_and_click(screenshot, timeout=1, confidence=0.6)
+        screenshot = self.search_and_click(screenshot, timeout=1, confidence=0.7)
         center_x = screenshot.left + screenshot.width // 2
         center_y = screenshot.top + screenshot.height // 2
         return center_x, center_y

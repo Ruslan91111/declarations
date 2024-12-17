@@ -35,6 +35,7 @@ class Document:
     address_manufacturer: str = ''
     regulatory_document: str = ''
     standard: str = ''
+    url: str = ''
     # Атрибуты с данными с сайта rusprofile
     address_applicant_from_web: str = ''
     address_manufacturer_from_web: str = ''
@@ -91,6 +92,7 @@ class Document:
         self.address_matching = doc_data_from_web.get('Соответствие адресов с ЕГРЮЛ')
         self.inspector = doc_data_from_web.get('ФИО')
         self.date_of_inspection = doc_data_from_web.get('Дата проверки')
+        self.url = doc_data_from_web.get('url')
 
     def convert_to_pd_series(self) -> pd.Series:
         """ Конвертировать данные из документа в pd.Series """
@@ -113,5 +115,6 @@ class Document:
             'Адрес изготовителя ЕГРЮЛ': self.address_manufacturer_from_web,
             'Статус НД': self.status_of_regulatory_documentation,
             'ФИО': self.inspector,
+            'url': self.url
         }
         return pd.Series(data)

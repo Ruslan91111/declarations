@@ -99,6 +99,7 @@ class SgrParser(BaseParser):
 
         try:
             self.document.status_on_site = self.browser.get_text_by_xpath(NSIXPaths.STATUS_DOC.value)
+
         except:
             if self.no_data_message():
                 return None

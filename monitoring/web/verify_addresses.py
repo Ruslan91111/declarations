@@ -31,7 +31,7 @@ import PyPDF2
 
 from common.constants import (RusProfileXPaths, REMOVE_ADDRESS_PARTS,
                               EgrulXPaths, PATH_TO_DOWNLOAD_DIR)
-from common.file_worker import random_delay_from_1_to_3
+from common.file_worker import random_delay
 
 
 def check_downloading_file(path_to_download_dir: str = PATH_TO_DOWNLOAD_DIR,
@@ -147,9 +147,9 @@ class RusprofileAddressChecker(BaseAddressChecker):
             address = self.ogrn_and_addresses[ogrn]
 
         else:
-            random_delay_from_1_to_3()
+            random_delay()
             self.browser_worker.input_in_field(RusProfileXPaths.INPUT_FIELD.value, ogrn)
-            random_delay_from_1_to_3()
+            random_delay()
             self.browser_worker.wait_and_click_elem(RusProfileXPaths.SEARCH_BUTTON.value)
             no_organisation = self.check_no_organisation()
 
