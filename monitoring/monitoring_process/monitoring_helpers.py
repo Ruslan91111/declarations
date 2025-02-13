@@ -76,8 +76,8 @@ def check_request_time(scrapper_by_type_of_doc, elapsed_time_from_last_request):
     """ Проверить сколько времени прошло с момента последнего обращения к сайту ФСА,
     если недостаточно, то выполнить задержку. """
     if (scrapper_by_type_of_doc in {FSADeclParser, FSACertParser} and
-            0 < elapsed_time_from_last_request < 60):
-        time.sleep(60 - elapsed_time_from_last_request)
+            0 < elapsed_time_from_last_request < 90):
+        time.sleep(90 - elapsed_time_from_last_request)
 
 
 @dataclass

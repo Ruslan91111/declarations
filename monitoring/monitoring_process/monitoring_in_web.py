@@ -19,6 +19,8 @@
 """
 import time
 import pandas as pd
+from selenium.common import TimeoutException, ElementClickInterceptedException
+
 from common.logger_config import logger
 
 from common.document_dataclass import Document
@@ -53,6 +55,7 @@ class WebMonitoringWorker:
     def create_browser(self):
         self.browser_worker = create_browser_with_wait(self.help_data.current_iteration,
                                                        self.help_data.browser_worker)
+
     def make_copy_of_file(self):
         """ Создать копию итогового файла """
         if self.row.name % 500 == 0 and self.row.name != 0:
@@ -145,6 +148,7 @@ class WebMonitoringWorker:
 
             except Exception as error:
                 self.handle_error_in_collect_data(error=error, timeout=15)
+                # time.sleep(60*20)
                 break
 
             # Обработать и сохранить собранные данные.
@@ -156,6 +160,7 @@ class WebMonitoringWorker:
         """ Набор действий при возникновении исключения при работе метода
         self.collect_data_all_docs. Также проверяется, не заблокированы ли оба ip
         адреса на сайте FSA. Если заблокированы, то выполнить задержку."""
+
         if (str(error) == str(self.help_data.error) == 'Ошибка 403 на сервере' and
                 (time.time() - float(self.help_data.error_time)) < (60 * 5)):
             logger.info('Ошибка сервера 403 для обоих ip адресов.')
@@ -186,7 +191,10 @@ def launch_checking_in_web(gold_file: str, result_file: str, count_of_iterations
             number_of_iteration, last_error, time_of_last_error
         )
 
-        monitoring_worker.collect_data_for_all_docs()
+        try:
+            monitoring_worker.collect_data_for_all_docs()
+        except (TimeoutException, ElementClickInterceptedException):
+            time.sleep(600)
 
         gold_last_row = monitoring_worker.help_data.last_checked_in_web_number
         web_last_row = monitoring_worker.help_data.last_row_in_gold

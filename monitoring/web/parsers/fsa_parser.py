@@ -232,7 +232,7 @@ class FSADeclParser(BaseParser):
             self.browser.refresh_browser()
             unavailable = True
             while unavailable:
-                time.sleep(60 * 15)
+                time.sleep(60 * 1)
                 self.browser.refresh_browser()
                 time.sleep(2)
                 unavailable = self.check_403_error()
@@ -271,7 +271,6 @@ class FSADeclParser(BaseParser):
         self.check_not_available_error()
         if self.document.status_on_site != 'Действует':
             return None
-
 
         # Определяем номер последней главы - количество итераций для сбора данных.
         count_of_iterations = self.get_last_chapter_numb()

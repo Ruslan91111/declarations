@@ -37,7 +37,7 @@ from common.file_worker import random_delay
 def check_downloading_file(path_to_download_dir: str = PATH_TO_DOWNLOAD_DIR,
                            time_for_loading: int = 20):
     """ Проверить, что в директории нет активных загрузок. """
-    time.sleep(1)
+    time.sleep(.5)
     all_loaded = False
     start_of_checking = time.time()
     while not all_loaded and time.time() - start_of_checking < time_for_loading:

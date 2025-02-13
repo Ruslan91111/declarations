@@ -50,10 +50,22 @@ def matches_valid_doc_numb(text, patterns):
 
 def collect_df_wrong_statuses(df: pd.DataFrame) -> pd.DataFrame:
     """ Создать df только с неверными статусами. """
-    df = remove_not_in_gold(df)
 
-    df = df[~df['Статус на сайте'].isin(['подписан и действует', 'Действует', 'действует'])]
-    return df[df['ДОС'].apply(lambda x: matches_valid_doc_numb(x, VALID_NUMBS))]
+    # Фильтруем строки с неверными статусами
+    wrong_statuses_df = df[~df['Статус на сайте'].isin(['подписан и действует', 'Действует', 'действует'])]
+
+    # Далее отбираем строки, где 'ДОС' соответствует определенному критерию
+    valid_docs_df = wrong_statuses_df[wrong_statuses_df['ДОС'].apply(lambda x: matches_valid_doc_numb(x, VALID_NUMBS))]
+
+    # Создаем DataFrame с 'Нет данных в GOLD' и убираем статус
+    no_data_df = df[df['ДОС'] == 'Нет данных в GOLD'].copy()  # Копируем для изменения
+    no_data_df['Статус на сайте'] = ''  # Очищаем поля 'Статус на сайте'
+
+    # Объединяем два DataFrame
+    final_df = pd.concat([valid_docs_df, no_data_df], ignore_index=True)
+    final_df = final_df.sort_values(by='Порядковый номер АМ')
+
+    return final_df
 
 
 def make_multiindex(df: pd.DataFrame, cols: list):
@@ -112,7 +124,7 @@ def split_result_file(df, name_for_full, name_with_wrong_status):
     print(MsgForUser.FILE_WRITTEN.value.format(name_for_full))
 
 
-def finish_monitoring(result_file):
+def finish_monitoring():
     """ Сохраняет итоговый файл с результатами основного мониторинга,
     а также запускает проверку международных деклараций. """
 
@@ -130,4 +142,4 @@ def finish_monitoring(result_file):
 
 if __name__ == '__main__':
 
-    finish_monitoring(Files.RESULT_FILE.value)
+    finish_monitoring()
