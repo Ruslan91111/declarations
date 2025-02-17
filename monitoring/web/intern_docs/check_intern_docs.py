@@ -66,7 +66,6 @@ class InternDocCollector:
             self.get_statuses_of_docs()
         except Exception as error:
             logger.error(error)
-            self.parser.check_not_available_serv()
         finally:
             self.parser.browser.browser_quit()
             self.write_df_and_last_numb()
@@ -91,20 +90,26 @@ class InternDocCollector:
 
                 else:
                     self.status = None
+
+                    # Передаем номер международного документа в международный парсер.
                     self.parser.number = self.number
+
                     self.parser.get_status_from_web()
-                    self.status = self.parser.status
+
+                    self.status = self.parser.status_doc
+                    self.parser.status_doc = ''
                     self.viewed_numbs[self.number] = self.status
 
                 logger.info(self.number)
                 self.df.at[iteration, 'Статус на сайте'] = self.status
                 self.last_checked_in_web_number = row.name
 
+
     def write_df_and_last_numb(self):
         """ Записать dataframe и последний просмотренный номер row в файлы. """
         self.df.to_excel(self.intern_xlsx, index=False)
-        write_numb_to_file(Files.LAST_VIEWED_FOR_INTERN.value,
-                           self.last_checked_in_web_number)
+        write_numb_to_file(Files.LAST_VIEWED_FOR_INTERN.value, self.last_checked_in_web_number)
+
 
 
 def make_intern_doc_collector(result_file: str = Files.INTERN_DOCS.value,

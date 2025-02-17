@@ -51,3 +51,13 @@ class Server403Exception(Exception):
 
     def __str__(self):
         return self.msg
+
+
+class DataLoadingError(Exception):
+    """Указанный файл не существует."""
+    def __init__(self):
+        super().__init__()
+        self.msg = 'Ошибка загрузки данных'
+
+    def __str__(self):
+        return self.msg
