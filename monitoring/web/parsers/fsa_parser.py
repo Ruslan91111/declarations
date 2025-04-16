@@ -83,6 +83,8 @@ class FSADeclParser(BaseParser):
     def click_chapter_get_data(self, data: dict, item: int) -> dict:
         """ Кликнуть по подразделу и собрать с него данные. """
         chapter_name = self.click_chapter(item)
+        if chapter_name == 'customInfo':
+            return {}
         data = self.get_data_from_chapter(data, chapter_name)
         return data
 
